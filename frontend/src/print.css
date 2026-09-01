@@ -1,0 +1,155 @@
+/**
+ * @media print Clinical Chart Stylesheet
+ * Optimized for standard 8.5x11 bond paper chart printouts.
+ */
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 15mm 15mm 15mm 15mm;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.35;
+    color: #000 !important;
+    background: #fff !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Hide UI elements during print */
+  .no-print,
+  .sidebar,
+  .action-bar,
+  .modal,
+  .toast,
+  .vu-meter-container {
+    display: none !important;
+  }
+
+  .main-content {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .editor-wrapper {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  /* Printable Chart Header */
+  .print-header {
+    display: table !important;
+    width: 100%;
+    border-bottom: 2px solid #000;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+  }
+
+  .print-header-left {
+    display: table-cell;
+    vertical-align: top;
+    width: 60%;
+  }
+
+  .print-header-right {
+    display: table-cell;
+    vertical-align: top;
+    width: 40%;
+    text-align: right;
+  }
+
+  .hospital-title {
+    font-size: 14pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 4px 0;
+  }
+
+  .consult-subhead {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #333;
+    margin: 0;
+  }
+
+  /* Addressograph Box for Patient Label */
+  .addressograph-box {
+    border: 1.5px dashed #444;
+    padding: 8px 12px;
+    text-align: center;
+    font-size: 8pt;
+    color: #666;
+    min-height: 45px;
+    display: inline-block;
+    width: 220px;
+  }
+
+  /* Note Sections & Headings */
+  .note-content h1,
+  .note-content h2,
+  .note-content h3 {
+    font-size: 11pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    border-bottom: 1px solid #aaa;
+    margin-top: 12px;
+    margin-bottom: 4px;
+    page-break-after: avoid;
+  }
+
+  .note-content p {
+    margin: 4px 0 8px 0;
+    text-align: justify;
+  }
+
+  .note-content ul {
+    margin: 4px 0 8px 18px;
+    padding: 0;
+  }
+
+  .note-content li {
+    margin-bottom: 2px;
+  }
+
+  /* Remove bracket visual cues when printing */
+  .placeholder-bracket {
+    background: none !important;
+    color: inherit !important;
+    font-weight: inherit !important;
+  }
+
+  /* Signature & Verification Block */
+  .signature-block {
+    margin-top: 24px;
+    page-break-inside: avoid;
+    display: table;
+    width: 100%;
+    border-top: 1px solid #ccc;
+    padding-top: 10px;
+  }
+
+  .signature-left {
+    display: table-cell;
+    vertical-align: bottom;
+    width: 60%;
+  }
+
+  .signature-right {
+    display: table-cell;
+    vertical-align: bottom;
+    width: 40%;
+    text-align: right;
+  }
+
+  .sig-line {
+    border-bottom: 1px solid #000;
+    width: 240px;
+    margin-bottom: 4px;
+  }
+}

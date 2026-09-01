@@ -1,0 +1,58 @@
+{
+  "no_pe": {
+    "id": "no_pe",
+    "name": "Negative PE Screen",
+    "description": "Wells score & PERC rule evaluation for pulmonary embolism",
+    "triggers": ["no pe", "negative pe", "rule out pe"],
+    "replacement": "• [No] cough / hemoptysis\n• [No] recent travel, surgery, or immobilization\n• [No] prior history of VTE / DVT / PE\n• [No] unilateral leg swelling / erythema\n--> Wells score: [ 0 ], PERC rule: [ Negative / Rule-out PE ]"
+  },
+  "norm_card": {
+    "id": "norm_card",
+    "name": "Normal Cardiac Exam",
+    "description": "Standard cardiovascular physical examination findings",
+    "triggers": ["normal cardiac", "norm card", "normal heart", "cvs exam"],
+    "replacement": "S1/S2 normal, regular rate and rhythm. No murmurs, rubs, or gallops. Peripheral pulses 2+ bilaterally. JVP [ flat / <3cm above sternal angle ]. No peripheral edema."
+  },
+  "norm_resp": {
+    "id": "norm_resp",
+    "name": "Normal Respiratory Exam",
+    "description": "Standard pulmonary examination findings",
+    "triggers": ["normal resp", "normal respiratory", "normal lungs", "chest exam"],
+    "replacement": "Lungs clear to auscultation bilaterally. Normal vesicular breath sounds. No wheezes, crackles, or pleural friction rubs. Normal work of breathing on [ room air ]."
+  },
+  "norm_neuro": {
+    "id": "norm_neuro",
+    "name": "Normal Neurological Exam",
+    "description": "Standard neurological screening examination",
+    "triggers": ["normal neuro", "normal neurological", "neuro exam"],
+    "replacement": "Alert and oriented x3. GCS [ 15 ]. Cranial nerves II-XII grossly intact. Motor strength 5/5 in all four extremities. Sensation intact to light touch. Gait steady, cerebellar testing intact."
+  },
+  "norm_gi": {
+    "id": "norm_gi",
+    "name": "Normal Abdominal Exam",
+    "description": "Standard gastrointestinal / abdominal physical examination",
+    "triggers": ["normal abdomen", "normal gi", "normal belly", "abdo exam"],
+    "replacement": "Abdomen soft, non-distended, non-tender to palpation throughout. Bowel sounds present in all four quadrants. No guarding, rigidity, rebound tenderness, or organomegaly."
+  },
+  "hfref_plan": {
+    "id": "hfref_plan",
+    "name": "Heart Failure (HFrEF) Plan",
+    "description": "Acute decompensated heart failure management bundle",
+    "triggers": ["hfref plan", "heart failure plan", "hf plan"],
+    "replacement": "# Acute Decompensated Heart Failure (HFrEF)\n- Lasix [ 40 ] mg IV [ BID / daily ]\n- Fluid restrict to [ 1.5 ] L/day, strict I/O, daily morning weights\n- Target euvolemia; hold ACEi/ARB/ARNI if SBP < [ 100 ]\n- Transthoracic echocardiogram [ ordered / pending ]\n- Monitor electrolytes, BUN, and Creatinine daily"
+  },
+  "copd_plan": {
+    "id": "copd_plan",
+    "name": "COPD Exacerbation Plan",
+    "description": "AECOPD acute management bundle",
+    "triggers": ["copd plan", "aecopd plan", "copd exacerbation"],
+    "replacement": "# Acute Exacerbation of COPD (AECOPD)\n- Prednisone [ 50 ] mg PO daily x 5 days\n- Ventolin [ 2.5 ] mg / Atrovent [ 500 ] mcg neb q4h PRN\n- Antibiotics: [ Azithromycin 500mg daily / Ceftriaxone 1g IV daily ]\n- Titrate supplemental O2 to target SpO2 [ 88-92% ]\n- Chest X-ray and sputum culture [ pending ]"
+  },
+  "order_bridge": {
+    "id": "order_bridge",
+    "name": "NCR Order Sheet Bridge Reference",
+    "description": "Standard 1-line bridge text for physical 50/50 NCR chart binder",
+    "triggers": ["order bridge", "chart bridge", "ncr bridge"],
+    "replacement": "CTU Consult — See attached typed note. Dictated / Meditech pending (Job #[XXX])."
+  }
+}

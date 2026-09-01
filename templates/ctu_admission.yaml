@@ -1,0 +1,66 @@
+# CTU Internal Medicine Admission Consult Template
+id: ctu_admission
+name: "CTU Admission Consult"
+category: "Internal Medicine"
+description: "Full CTU admission consult with Epic-style picklists and wildcard stops"
+content: |
+  CONSULT NOTE — CTU INTERNAL MEDICINE
+
+  PATIENT: [ *** ]
+  MRN: [ *** ]
+  AGE / SEX: [ *** ]
+  ATTENDING PHYSICIAN: [ Dr. *** ]
+  DATE OF ADMISSION: [ {DATE} ]
+
+  REASON FOR ADMISSION / CHIEF COMPLAINT:
+  [ Progressive dyspnea / Chest pain / Sepsis / AKI / Altered mental status / GI bleed ]
+
+  HISTORY OF PRESENT ILLNESS:
+  [ *** ]
+
+  PAST MEDICAL HISTORY:
+  • [ Hypertension ]
+  • [ Type 2 Diabetes Mellitus ]
+  • [ Dyslipidemia ]
+  • [ HFrEF (baseline EF [ 35% ]) / HFpEF ]
+  • [ COPD (GOLD Stage [ 2 ]) ]
+  • [ CKD Stage [ 3a / 3b / 4 ] (baseline Cr [ 120 ]) ]
+  • [ Atrial Fibrillation (on [ Apixaban 5mg BID / Rivaroxaban 20mg daily / Warfarin ]) ]
+
+  MEDICATIONS ON ADMISSION:
+  [ 1. *** ]
+
+  ALLERGIES: [ NKDA / No known drug allergies ]
+
+  PHYSICAL EXAMINATION:
+  Vitals: BP [ 120/80 ], HR [ 75 ] [ regular / irregular ], SpO2 [ 96% on RA / 94% on 2L NP ], T [ 36.8 ] C, RR [ 18 ]
+  General: [ Alert, oriented x3, in no acute distress ]
+  CVS: [ S1/S2 normal, no murmurs, rubs, or gallops. JVP flat / <3cm. No peripheral edema ]
+  Resp: [ Lungs clear bilaterally / Bibasilar fine crackles / Expiratory wheezes ]
+  Abdo: [ Soft, non-tender, non-distended, normal bowel sounds ]
+  Neuro: [ GCS 15, grossly intact, no focal neurological deficits ]
+
+  INVESTIGATIONS:
+  CBC: WBC [ 11.2 ], Hgb [ 120 ], Plt [ 220 ]
+  Lytes/Renal: Na [ 138 ], K [ 4.2 ], Cl [ 102 ], HCO3 [ 24 ], BUN [ 7.5 ], Cr [ 110 ], eGFR [ >60 ]
+  Cardiac/Markers: Troponin [ <14 ], BNP [ 350 ], INR [ 1.1 ]
+  Imaging: Chest X-ray [ Clear / Right lower lobe consolidation / Cardiomegaly with vascular congestion ]
+  ECG: [ Sinus rhythm at 75 bpm, normal intervals, no acute ischemic ST-T changes ]
+
+  ASSESSMENT AND PLAN:
+  1. [ Acute Decompensated Heart Failure (HFrEF) ]:
+     - Lasix [ 40 ] mg IV [ BID / daily ]
+     - Strict fluid restriction to [ 1.5 ] L/day, daily morning weights, strict I/O
+     - Hold ACEi/ARB/ARNI if SBP < [ 100 ]
+     - Transthoracic echocardiogram [ ordered / pending ]
+
+  2. [ Community Acquired Pneumonia (CAP) ]:
+     - Ceftriaxone [ 1g ] IV daily + Azithromycin [ 500mg ] PO daily
+     - Blood cultures x2 and sputum culture pending
+
+  3. [ Baseline Chronic Illnesses ]:
+     - Continue outpatient home medications as tolerated
+
+  4. [ Disposition & Goals of Care ]:
+     - Code Status: [ Full Code / Level 2 (DNR) / Level 3 (Comfort Care) ]
+     - DVT Prophylaxis: [ Heparin 5000 units SC BID / Enoxaparin 40mg SC daily ]

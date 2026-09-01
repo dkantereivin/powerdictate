@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+
+# Node / Svelte
+node_modules/
+dist/
+.svelte-kit/
+.vite/
+pnpm-lock.yaml
+
+# Audio outputs
+output/*.wav
+output/*.mp3
+exports/fluency/*

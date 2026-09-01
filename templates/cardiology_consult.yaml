@@ -1,0 +1,47 @@
+# Cardiology Consultation Note
+id: cardiology_consult
+name: "Cardiology Consult"
+category: "Cardiology"
+description: "Inpatient and outpatient cardiology consultation template"
+content: |
+  CONSULT NOTE — CARDIOLOGY
+
+  Patient: [ *** ]
+  MRN: [ *** ]
+  Referring Physician: [ Dr. *** ]
+  Date of Consultation: [ {DATE} ]
+
+  REASON FOR CONSULTATION:
+  [ Evaluation of progressive exertional dyspnea / Chest pain syndrome / Atrial fibrillation / Palpitations / Syncope ]
+
+  HISTORY OF PRESENT ILLNESS:
+  [ *** ]
+
+  CARDIAC RISK FACTORS:
+  • Hypertension: [ Yes / No ]
+  • Diabetes Mellitus: [ Yes / No ]
+  • Dyslipidemia: [ Yes / No ]
+  • Smoking History: [ Current / Former / Never ]
+  • Family History of CAD: [ Premature CAD in first-degree relative / None ]
+
+  MEDICATIONS:
+  [ Amlodipine 5mg PO daily, Atorvastatin 40mg PO nightly, Ramipril 10mg PO daily, Empagliflozin 10mg PO daily, Metformin 1000mg PO BID ]
+
+  PHYSICAL EXAMINATION:
+  BP: [ 130/80 ], HR: [ 72 ] [ regular / irregularly irregular ], SpO2: [ 98% on RA ]
+  JVP: [ Flat / 3cm above sternal angle / Elevated to angle of jaw ]
+  Heart: [ S1/S2 normal, regular rate. No murmurs, gallops, or friction rubs / Systolic ejection murmur 2/6 at right upper sternal border ]
+  Lungs: [ Clear to auscultation bilaterally / Bibasilar fine crackles ]
+  Extremities: [ No peripheral edema / 1+ pitting edema bilaterally / Warm and well perfused, 2+ radial and DP pulses ]
+
+  DIAGNOSTIC DATA:
+  • ECG: [ Normal sinus rhythm at 72 bpm, normal axis, no ST elevation or depression ]
+  • Echocardiogram (TTE): [ LVEF 55-60%, normal LV cavity size, no regional wall motion abnormalities / LVEF 35%, diffuse hypokinesis ]
+  • Labs: hs-Troponin [ <14 ], BNP [ 85 ], Creatinine [ 95 ]
+
+  ASSESSMENT AND RECOMMENDATIONS:
+  1. [ Exertional Dyspnea of Cardiac vs Non-Cardiac Origin ]:
+     - [ Recommend outpatient 14-day ambulatory Zio monitor ]
+     - [ Exercise treadmill stress echocardiography ]
+     - [ Continue current medical therapy ]
+     - [ Follow up in cardiology clinic in 6-8 weeks ]
