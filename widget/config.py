@@ -1,7 +1,8 @@
 """
 Widget Configuration & Settings
 ===============================
-Manages user preferences, hotkeys, audio devices, and dictation targets.
+Manages user preferences, hotkeys, audio devices, dictation target,
+and active STT transcription model.
 """
 
 import json
@@ -16,9 +17,9 @@ CONFIG_FILE = CONFIG_DIR / "widget_config.json"
 
 @dataclass
 class WidgetConfig:
-    # Primary Dictation Hotkey (Supports "ctrl_r", "f8", "f9", "ctrl_l", "scroll_lock")
+    # Primary Dictation Hotkey (Right Control / F8)
     hotkey: str = "ctrl_r"
-    hotkey_mode: str = "toggle"  # "toggle" (press once to start/stop) or "ptt" (hold to talk)
+    hotkey_mode: str = "toggle"  # "toggle" or "ptt"
     
     # Audio settings
     sample_rate: int = 16000
@@ -26,6 +27,9 @@ class WidgetConfig:
     
     # Dictation target: "cursor" (direct in-window typing) or "box" (Dragon-style dictation box)
     dictation_target: str = "cursor"
+
+    # STT Model: "whisper_large_v3_turbo", "google_medasr", "onnx_conformer"
+    stt_model: str = "whisper_large_v3_turbo"
 
     @classmethod
     def load(cls) -> "WidgetConfig":

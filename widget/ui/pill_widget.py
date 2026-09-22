@@ -1,9 +1,8 @@
 """
-PySide6 Floating Pill Companion Widget (XWayland & Windows Native)
-================================================================
-Frameless, translucent floating toolbar that permanently stays on top
-via X11 stacking hints, supports smooth dragging, live VU meter,
-and unified recording triggers for Right Control and F8.
+PySide6 Floating Pill Companion Widget (Phase 3 with Command Interception)
+==========================================================================
+Frameless, translucent floating toolbar supporting dynamic dictation target
+switching, Dragon Dictation Box, and 3-second visual command toasts.
 """
 
 import os
@@ -13,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QPoint, QTimer, Slot
-from PySide6.QtGui import QFont, QColor, QAction, QKeyEvent, QPainter
+from PySide6.QtGui import QFont, QColor, QAction, QKeyEvent, QPainter, QActionGroup, QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QPushButton, QLabel,
     QProgressBar, QMenu, QGraphicsDropShadowEffect, QStyleOption, QStyle
@@ -22,6 +21,9 @@ from PySide6.QtWidgets import (
 from widget.config import WidgetConfig
 from widget.controller import DictationController, DictationState
 from widget.audio.hotkey import GlobalHotkeyManager
+from widget.stt import AVAILABLE_MODELS
+from widget.ui.dictation_box import DictationBoxWidget
+from widget.ui.command_toast import CommandToastWidget
 
 
 class FloatingPillWidget(QWidget):
@@ -33,6 +35,17 @@ class FloatingPillWidget(QWidget):
         super().__init__()
         self.config = config or WidgetConfig.load()
         self.controller = DictationController(self.config)
+
+        # Dictation Box Widget
+        self.dictation_box = DictationBoxWidget()
+        self.dictation_box.hide()  # Default closed -> Dictates to active cursor
+
+        # 3-Second Command Toast Widget
+        self.toast = CommandToastWidget()
+        self.toast.hide()
+
+        # Ensure target matches initial box state
+        self.config.dictation_target = "box" if self.dictation_box.isVisible() else "cursor"
 
         # Drag state
         self.drag_position = QPoint()
@@ -46,6 +59,7 @@ class FloatingPillWidget(QWidget):
         self._init_ui()
         self._connect_controller_signals()
         self._init_hotkeys()
+        self._init_local_shortcuts()
 
     def _init_window_flags(self):
         # Frameless, Always on Top, Standalone Window with X11 stacking support
@@ -56,10 +70,12 @@ class FloatingPillWidget(QWidget):
             Qt.WindowType.X11BypassWindowManagerHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # Position at top-right corner of screen
         screen = QApplication.primaryScreen().geometry()
-        pill_width = 330
+        pill_width = 345
         pill_height = 54
         x = max(20, screen.width() - pill_width - 30)
         y = 35
@@ -96,7 +112,7 @@ class FloatingPillWidget(QWidget):
 
         pill_layout = QHBoxLayout(self.container)
         pill_layout.setContentsMargins(10, 4, 8, 4)
-        pill_layout.setSpacing(8)
+        pill_layout.setSpacing(7)
 
         # Drag Handle Grip
         self.drag_handle = QLabel("⠿", self.container)
@@ -107,6 +123,7 @@ class FloatingPillWidget(QWidget):
 
         # Microphone Button
         self.mic_btn = QPushButton("🎙️ MIC", self.container)
+        self.mic_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.mic_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mic_btn.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         self.mic_btn.setFixedHeight(34)
@@ -115,6 +132,28 @@ class FloatingPillWidget(QWidget):
         self.mic_btn.pressed.connect(self._on_mic_btn_pressed)
         self.mic_btn.released.connect(self._on_mic_btn_released)
         pill_layout.addWidget(self.mic_btn)
+
+        # Dictation Box Compact Icon Button (📝)
+        self.box_toggle_btn = QPushButton("📝", self.container)
+        self.box_toggle_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.box_toggle_btn.setToolTip("Toggle Dictation Box (Ctrl+D)")
+        self.box_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.box_toggle_btn.setFont(QFont("Segoe UI", 11))
+        self.box_toggle_btn.setFixedSize(30, 30)
+        self.box_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #38bdf8;
+                border: 1px solid #334155;
+                border-radius: 15px;
+            }
+            QPushButton:hover {
+                background-color: #0284c7;
+                color: white;
+            }
+        """)
+        self.box_toggle_btn.clicked.connect(self.toggle_dictation_box)
+        pill_layout.addWidget(self.box_toggle_btn)
 
         # Hotkey Display Badge
         self.hotkey_badge = QLabel(self._get_hotkey_display(), self.container)
@@ -144,7 +183,7 @@ class FloatingPillWidget(QWidget):
         self.vu_bar.setValue(0)
         self.vu_bar.setTextVisible(False)
         self.vu_bar.setFixedHeight(6)
-        self.vu_bar.setFixedWidth(45)
+        self.vu_bar.setFixedWidth(38)
         self.vu_bar.setStyleSheet("""
             QProgressBar {
                 background-color: #1e293b;
@@ -161,6 +200,7 @@ class FloatingPillWidget(QWidget):
 
         # Side Dropdown Menu Button (⋮)
         self.menu_btn = QPushButton("⋮", self.container)
+        self.menu_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.menu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.menu_btn.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
         self.menu_btn.setFixedSize(28, 28)
@@ -181,6 +221,11 @@ class FloatingPillWidget(QWidget):
 
         layout.addWidget(self.container)
 
+    def _init_local_shortcuts(self):
+        """Initializes in-app keyboard shortcuts."""
+        box_shortcut = QShortcut(QKeySequence("Ctrl+D"), self)
+        box_shortcut.activated.connect(self.toggle_dictation_box)
+
     def _on_mic_btn_clicked(self):
         if self.config.hotkey_mode == "toggle":
             self.controller.toggle()
@@ -198,6 +243,9 @@ class FloatingPillWidget(QWidget):
         self.controller.state_changed.connect(self._on_state_changed)
         self.controller.vu_meter_updated.connect(self._on_vu_meter_updated)
         self.controller.recording_saved.connect(self._on_recording_saved)
+        self.controller.transcription_received.connect(self._on_transcription_received)
+        self.controller.command_recognized.connect(self._on_command_recognized)
+        self.controller.model_switched.connect(self._on_model_switched)
 
     def _init_hotkeys(self):
         """Initializes hardware keyboard hotkey listener."""
@@ -206,7 +254,8 @@ class FloatingPillWidget(QWidget):
             hotkey_mode=self.config.hotkey_mode,
             on_toggle=self.controller.toggle,
             on_ptt_press=self.controller.ptt_press,
-            on_ptt_release=self.controller.ptt_release
+            on_ptt_release=self.controller.ptt_release,
+            on_toggle_box=self.toggle_dictation_box
         )
         self.hotkey_mgr.start()
 
@@ -230,9 +279,59 @@ class FloatingPillWidget(QWidget):
 
     @Slot(str, float)
     def _on_recording_saved(self, file_name: str, duration: float):
-        self.status_lbl.setText(f"Saved: {file_name}")
+        self.status_lbl.setText(f"Transcribed ({duration:.1f}s)")
         self.status_lbl.setStyleSheet("color: #10b981; font-weight: demi-bold;")
-        QTimer.singleShot(4000, lambda: self._reset_status())
+        QTimer.singleShot(3500, lambda: self._reset_status())
+
+    @Slot(str)
+    def _on_transcription_received(self, text: str):
+        """Inserts recognized text at active cursor position in Dictation Box."""
+        if self.dictation_box.isVisible():
+            self.dictation_box.insert_at_cursor(text)
+
+    @Slot(str, str, str)
+    def _on_command_recognized(self, name: str, hotkey: str, description: str):
+        """Displays transient 3.0s command toast badge beside the floating pill."""
+        self.toast.show_command(name, hotkey, self.geometry())
+
+    @Slot(str)
+    def _on_model_switched(self, model_name: str):
+        short_name = model_name.split()[0]
+        self.status_lbl.setText(f"Model: {short_name}")
+        self.status_lbl.setStyleSheet("color: #38bdf8; font-weight: demi-bold;")
+        QTimer.singleShot(3000, lambda: self._reset_status())
+
+    def toggle_dictation_box(self):
+        """
+        Toggles visibility of the Dictation Box and dynamically
+        routes dictation target:
+        - Box Visible -> Dictates into Dictation Box at cursor.
+        - Box Hidden  -> Dictates into Active OS Window cursor.
+        """
+        if self.dictation_box.isVisible():
+            self.dictation_box.hide()
+            self.config.dictation_target = "cursor"
+            self.controller.config.dictation_target = "cursor"
+            self.config.save()
+            self.status_lbl.setText("Target: Cursor")
+            self.status_lbl.setStyleSheet("color: #38bdf8; font-weight: demi-bold;")
+            QTimer.singleShot(2500, lambda: self._reset_status())
+        else:
+            self._position_dictation_box()
+            self.dictation_box.show()
+            self.config.dictation_target = "box"
+            self.controller.config.dictation_target = "box"
+            self.config.save()
+            self.status_lbl.setText("Target: Box")
+            self.status_lbl.setStyleSheet("color: #10b981; font-weight: demi-bold;")
+            QTimer.singleShot(2500, lambda: self._reset_status())
+
+    def _position_dictation_box(self):
+        """Positions Dictation Box cleanly below the floating pill."""
+        pill_geo = self.geometry()
+        x = pill_geo.x() + (pill_geo.width() - self.dictation_box.width())
+        y = pill_geo.y() + pill_geo.height() + 8
+        self.dictation_box.move(x, y)
 
     def _reset_status(self):
         if self.controller.state == DictationState.IDLE:
@@ -283,12 +382,16 @@ class FloatingPillWidget(QWidget):
 
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
+            new_pos = event.globalPosition().toPoint() - self.drag_position
+            self.move(new_pos)
             event.accept()
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key.Key_F8:
             self.controller.toggle()
+            event.accept()
+        elif event.key() == Qt.Key.Key_D and (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            self.toggle_dictation_box()
             event.accept()
         else:
             super().keyPressEvent(event)
@@ -309,12 +412,43 @@ class FloatingPillWidget(QWidget):
             }
         """)
 
-        # Open Recordings Folder
+        # 1. Model Selection Sub-Menu
+        model_menu = menu.addMenu("🧠 STT Model Engine")
+        model_menu.setStyleSheet("""
+            QMenu {
+                background-color: #1e293b;
+                color: #f8fafc;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #0284c7;
+            }
+        """)
+
+        model_group = QActionGroup(self)
+        for key, name in AVAILABLE_MODELS.items():
+            action = QAction(name, model_menu, checkable=True)
+            action.setChecked(self.config.stt_model == key)
+            action.triggered.connect(lambda checked=False, k=key: self.controller.switch_model(k))
+            model_group.addAction(action)
+            model_menu.addAction(action)
+
+        menu.addSeparator()
+
+        # 2. Toggle Dictation Box Action
+        box_text = "✕ Hide Dictation Box [Ctrl+D]" if self.dictation_box.isVisible() else "📝 Show Dictation Box [Ctrl+D]"
+        box_action = QAction(box_text, self)
+        box_action.triggered.connect(self.toggle_dictation_box)
+        menu.addAction(box_action)
+
+        # 3. Open Recordings Folder
         open_rec_action = QAction("📁 Open Recordings Folder", self)
         open_rec_action.triggered.connect(self._open_recordings_dir)
         menu.addAction(open_rec_action)
 
-        # Mode Toggle (Toggle vs PTT)
+        # 4. Mode Toggle (Toggle vs PTT)
         mode_text = "Switch to Push-To-Talk (Hold RCtrl/Click)" if self.config.hotkey_mode == "toggle" else "Switch to Toggle Mode (Press RCtrl/Click)"
         mode_action = QAction(mode_text, self)
         mode_action.triggered.connect(self._toggle_ptt_mode)
@@ -322,15 +456,7 @@ class FloatingPillWidget(QWidget):
 
         menu.addSeparator()
 
-        # Dictation Target placeholder
-        target_text = f"Dictation Target: [{self.config.dictation_target.title()}]"
-        target_action = QAction(target_text, self)
-        target_action.triggered.connect(self._toggle_dictation_target)
-        menu.addAction(target_action)
-
-        menu.addSeparator()
-
-        # Close Widget
+        # 5. Close Widget
         quit_action = QAction("✕ Close Companion", self)
         quit_action.triggered.connect(QApplication.instance().quit)
         menu.addAction(quit_action)
@@ -351,9 +477,3 @@ class FloatingPillWidget(QWidget):
         self.config.hotkey_mode = "ptt" if self.config.hotkey_mode == "toggle" else "toggle"
         self.config.save()
         self.hotkey_mgr.hotkey_mode = self.config.hotkey_mode
-
-    def _toggle_dictation_target(self):
-        self.config.dictation_target = "box" if self.config.dictation_target == "cursor" else "cursor"
-        self.config.save()
-        self.status_lbl.setText(f"Target: {self.config.dictation_target}")
-        QTimer.singleShot(2000, lambda: self._reset_status())

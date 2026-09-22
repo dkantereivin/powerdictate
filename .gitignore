@@ -18,4 +18,5 @@ pnpm-lock.yaml
 # Audio outputs
 output/*.wav
 output/*.mp3
+recordings/*.wav
 exports/fluency/*

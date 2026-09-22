@@ -1,0 +1,104 @@
+# Voice Navigation & Editing Commands Configuration
+# Defines voice triggers, keyboard shortcuts, and actions
+
+commands:
+  # Navigation Commands
+  "next field":
+    name: "Next Field"
+    hotkey: "Tab"
+    key_code: "Tab"
+    action: "navigate_next_field"
+    description: "Jumps to next template bracket or form field"
+
+  "jump next":
+    name: "Next Field"
+    hotkey: "Tab"
+    key_code: "Tab"
+    action: "navigate_next_field"
+    description: "Jumps to next template bracket or form field"
+
+  "next bracket":
+    name: "Next Field"
+    hotkey: "Tab"
+    key_code: "Tab"
+    action: "navigate_next_field"
+    description: "Jumps to next template bracket"
+
+  "previous field":
+    name: "Previous Field"
+    hotkey: "Shift+Tab"
+    key_code: "Shift+Tab"
+    action: "navigate_prev_field"
+    description: "Jumps to previous template field"
+
+  "prev field":
+    name: "Previous Field"
+    hotkey: "Shift+Tab"
+    key_code: "Shift+Tab"
+    action: "navigate_prev_field"
+    description: "Jumps to previous template field"
+
+  # Editing & Deletion Commands
+  "scratch that":
+    name: "Scratch That"
+    hotkey: "Ctrl+Z"
+    key_code: "Ctrl+Z"
+    action: "undo"
+    description: "Undoes or deletes the last spoken phrase"
+
+  "delete that":
+    name: "Scratch That"
+    hotkey: "Ctrl+Z"
+    key_code: "Ctrl+Z"
+    action: "undo"
+    description: "Undoes or deletes the last spoken phrase"
+
+  "undo":
+    name: "Undo"
+    hotkey: "Ctrl+Z"
+    key_code: "Ctrl+Z"
+    action: "undo"
+    description: "Undoes the last action"
+
+  "select all":
+    name: "Select All"
+    hotkey: "Ctrl+A"
+    key_code: "Ctrl+A"
+    action: "select_all"
+    description: "Selects all text in current field"
+
+  "clear field":
+    name: "Clear Field"
+    hotkey: "Ctrl+A, Backspace"
+    key_code: "Clear"
+    action: "clear_field"
+    description: "Clears all text in the active field"
+
+  "clear all":
+    name: "Clear All"
+    hotkey: "Ctrl+A, Backspace"
+    key_code: "Clear"
+    action: "clear_field"
+    description: "Clears all text in the active field"
+
+  # Cursor Movement Commands
+  "go to end":
+    name: "End of Text"
+    hotkey: "End"
+    key_code: "End"
+    action: "cursor_end"
+    description: "Moves cursor to end of text"
+
+  "go to start":
+    name: "Start of Text"
+    hotkey: "Home"
+    key_code: "Home"
+    action: "cursor_start"
+    description: "Moves cursor to beginning of text"
+
+  "go to beginning":
+    name: "Start of Text"
+    hotkey: "Home"
+    key_code: "Home"
+    action: "cursor_start"
+    description: "Moves cursor to beginning of text"
