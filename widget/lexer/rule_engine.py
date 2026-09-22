@@ -167,7 +167,13 @@ class MedicalRuleEngine:
                 formatted_body = normalized[0].lower() + normalized[1:]
 
         # Spacing adjustments: prevent double spacing if prefix/suffix already has space
-        needs_leading_space = len(prefix_text) > 0 and not prefix_text.endswith((" ", "\n", "("))
+        starts_with_punct = formatted_body[0] in (".", ",", ";", ":", "!", "?") if formatted_body else False
+
+        if starts_with_punct:
+            needs_leading_space = False
+        else:
+            needs_leading_space = len(prefix_text) > 0 and not prefix_text.endswith((" ", "\n", "("))
+
         needs_trailing_space = len(suffix_text) > 0 and not suffix_text.startswith((" ", "\n", ".", ",", "!", "?", ":", ";", ")"))
 
         result = (

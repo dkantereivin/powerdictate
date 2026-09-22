@@ -3,18 +3,17 @@ Voice Command Execution Engine
 ==============================
 Dispatches vocal navigation, template jumping, and text editing commands
 to either the active OS window (via X11 XTest) or the Dictation Box.
+Supports both YAML actions and custom Python handlers.
 """
 
 import sys
 import time
 import logging
-import yaml
-from pathlib import Path
 from typing import Optional, Dict
 
-logger = logging.getLogger("widget.commands")
+from widget.commands.registry import CommandRegistry, CommandDefinition
 
-COMMANDS_YAML = Path(__file__).resolve().parent.parent.parent / "rules" / "commands.yaml"
+logger = logging.getLogger("widget.commands.executor")
 
 # Try initializing X11 XTest for active window hardware keypresses
 HAS_XTEST = False
@@ -43,11 +42,10 @@ class CommandExecutor:
     """
 
     def __init__(self):
-        self.commands_def: Dict[str, dict] = {}
+        self.registry = CommandRegistry()
         self.x11_disp = None
         self.key_map = {}
         self._init_x11()
-        self.load_commands()
 
     def _init_x11(self):
         if HAS_XTEST:
@@ -60,54 +58,76 @@ class CommandExecutor:
             except Exception as e:
                 logger.warning(f"Failed to initialize X11 keycodes: {e}")
 
-    def load_commands(self):
-        """Loads command mappings from rules/commands.yaml."""
-        if COMMANDS_YAML.exists():
-            try:
-                with open(COMMANDS_YAML, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-                    self.commands_def = data.get("commands", {})
-                    logger.info(f"Loaded {len(self.commands_def)} voice commands from YAML.")
-            except Exception as e:
-                logger.error(f"Error loading commands YAML: {e}")
-
     def execute_command(self, trigger: str, target: str = "cursor", dictation_box=None) -> bool:
         """
         Executes the voice command on the specified target.
+        Handles both built-in YAML actions and registered Python handlers.
         """
-        clean_trigger = trigger.lower().strip()
-        cmd_info = self.commands_def.get(clean_trigger)
-        if not cmd_info:
-            logger.warning(f"Command '{clean_trigger}' not found in registry.")
+        cmd_def = self.registry.get_command(trigger)
+        if not cmd_def:
+            logger.warning(f"Command '{trigger}' not found in registry.")
             return False
 
-        action_name = cmd_info.get("action", "")
-        logger.info(f"Executing voice command '{cmd_info.get('name')}' (action: {action_name}) -> target: {target}")
+        logger.info(f"Executing voice command '{cmd_def.name}' (action: {cmd_def.action}) -> target: {target}")
 
-        # Target 1: Dictation Box
-        if target == "box" and dictation_box is not None and dictation_box.isVisible():
-            return self._execute_on_dictation_box(action_name, dictation_box)
+        # 1. Custom Python Handler (if registered)
+        if cmd_def.handler is not None:
+            try:
+                return cmd_def.handler(target=target, dictation_box=dictation_box)
+            except Exception as e:
+                logger.error(f"Error in custom Python command '{cmd_def.name}': {e}")
+                return False
 
-        # Target 2: Active OS Window
-        return self._execute_on_active_window(action_name)
+        action_name = cmd_def.action
 
-    def _execute_on_dictation_box(self, action: str, dictation_box) -> bool:
+        # 2. Target: Dictation Box
+        if target == "box" and dictation_box is not None:
+            return self._execute_on_dictation_box(action_name, dictation_box, cmd_def)
+
+        # 3. Target: Active OS Window
+        return self._execute_on_active_window(action_name, cmd_def)
+
+    def _execute_on_dictation_box(self, action: str, dictation_box, cmd_def: Optional[CommandDefinition] = None) -> bool:
         """Executes editing/navigation commands directly inside Dictation Box."""
         try:
             from PySide6.QtGui import QTextCursor, QTextDocument
             text_edit = dictation_box.text_edit
 
-            if action == "navigate_next_field":
+            if action == "insert_template":
+                tpl = cmd_def.template_text if cmd_def else ""
+                if tpl:
+                    dictation_box.insert_template(tpl)
+                    return True
+
+            elif action == "insert_text" or (cmd_def and cmd_def.template_text):
+                tpl = cmd_def.template_text if cmd_def else ""
+                if tpl:
+                    dictation_box.insert_at_cursor(tpl)
+                    return True
+
+            elif action == "tab_space":
+                cursor = text_edit.textCursor()
+                cursor.insertText("\t")
+                text_edit.setTextCursor(cursor)
+                return True
+
+            elif action == "navigate_next_field":
                 # Template jumping: Find next '[' bracket or '[***]' field
                 cursor = text_edit.textCursor()
                 doc = text_edit.document()
                 found_cursor = doc.find("[", cursor)
+
+                # Loop back to document start if no more brackets after cursor
+                if found_cursor.isNull():
+                    start_cursor = QTextCursor(doc)
+                    found_cursor = doc.find("[", start_cursor)
+
                 if not found_cursor.isNull():
-                    # Check for closing bracket ']'
                     close_cursor = doc.find("]", found_cursor)
                     if not close_cursor.isNull():
                         found_cursor.setPosition(close_cursor.position(), QTextCursor.MoveMode.KeepAnchor)
                     text_edit.setTextCursor(found_cursor)
+                    text_edit.ensureCursorVisible()
                     return True
 
             elif action == "navigate_prev_field":
@@ -115,7 +135,11 @@ class CommandExecutor:
                 doc = text_edit.document()
                 found_cursor = doc.find("[", cursor, QTextDocument.FindFlag.FindBackward)
                 if not found_cursor.isNull():
+                    close_cursor = doc.find("]", found_cursor)
+                    if not close_cursor.isNull():
+                        found_cursor.setPosition(close_cursor.position(), QTextCursor.MoveMode.KeepAnchor)
                     text_edit.setTextCursor(found_cursor)
+                    text_edit.ensureCursorVisible()
                     return True
 
             elif action == "undo":
@@ -138,19 +162,37 @@ class CommandExecutor:
                 text_edit.moveCursor(QTextCursor.MoveOperation.Start)
                 return True
 
+            elif action == "new_line":
+                cursor = text_edit.textCursor()
+                cursor.insertText("\n")
+                text_edit.setTextCursor(cursor)
+                return True
+
+            elif action == "new_paragraph":
+                cursor = text_edit.textCursor()
+                cursor.insertText("\n\n")
+                text_edit.setTextCursor(cursor)
+                return True
+
         except Exception as e:
             logger.error(f"Error executing command on Dictation Box: {e}")
 
         return False
 
-    def _execute_on_active_window(self, action: str) -> bool:
+    def _execute_on_active_window(self, action: str, cmd_def: Optional[CommandDefinition] = None) -> bool:
         """Executes key combinations into active OS focused window."""
+        if action in ("insert_template", "insert_text") or (cmd_def and cmd_def.template_text):
+            tpl = cmd_def.template_text if cmd_def else ""
+            if tpl:
+                from widget.injector import InputInjector
+                return InputInjector().inject_text(tpl)
+
         if self.x11_disp is not None:
             try:
                 import Xlib.X
                 import Xlib.ext.xtest
 
-                if action == "navigate_next_field":
+                if action in ("navigate_next_field", "tab_space"):
                     self._press_key('Tab')
                     return True
 
@@ -168,7 +210,7 @@ class CommandExecutor:
 
                 elif action == "clear_field":
                     self._press_hotkey('Control_L', 'a')
-                    time.sleep(0.01)
+                    time.sleep(0.02)
                     self._press_key('BackSpace')
                     return True
 
@@ -178,6 +220,16 @@ class CommandExecutor:
 
                 elif action == "cursor_start":
                     self._press_key('Home')
+                    return True
+
+                elif action == "new_line":
+                    self._press_key('Return')
+                    return True
+
+                elif action == "new_paragraph":
+                    self._press_key('Return')
+                    time.sleep(0.01)
+                    self._press_key('Return')
                     return True
 
             except Exception as e:
@@ -201,6 +253,11 @@ class CommandExecutor:
                     pyautogui.press('end')
                 elif action == "cursor_start":
                     pyautogui.press('home')
+                elif action == "new_line":
+                    pyautogui.press('enter')
+                elif action == "new_paragraph":
+                    pyautogui.press('enter')
+                    pyautogui.press('enter')
                 return True
             except Exception as e:
                 logger.error(f"PyAutoGUI command error: {e}")
@@ -214,10 +271,10 @@ class CommandExecutor:
             import Xlib.ext.xtest
             Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyPress, code)
             self.x11_disp.flush()
-            time.sleep(0.01)
+            time.sleep(0.015)
             Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyRelease, code)
             self.x11_disp.flush()
-            time.sleep(0.01)
+            time.sleep(0.015)
 
     def _press_hotkey(self, mod_name: str, key_name: str):
         mod_code = self.key_map.get(mod_name)
@@ -228,8 +285,8 @@ class CommandExecutor:
             Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyPress, mod_code)
             Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyPress, key_code)
             self.x11_disp.flush()
-            time.sleep(0.01)
+            time.sleep(0.015)
             Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyRelease, key_code)
             Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyRelease, mod_code)
             self.x11_disp.flush()
-            time.sleep(0.01)
+            time.sleep(0.015)

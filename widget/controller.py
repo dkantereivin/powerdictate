@@ -1,8 +1,9 @@
 """
 Unified Dictation State Controller & STT Coordinator
 ====================================================
-Coordinates microphone recording, modular STT engine dispatching,
-lookahead command interception, voice command execution, and dual-target routing.
+Coordinates microphone recording, live phrase-level transcription,
+modular STT engine dispatching, lookahead command interception,
+voice command execution, and dual-target routing.
 """
 
 import time
@@ -40,6 +41,7 @@ class DictationController(QObject):
     transcription_received = Signal(str)          # Formatted text chunk
     command_recognized = Signal(str, str, str)    # (name, hotkey, description)
     command_executed = Signal(str)                # (trigger)
+    execute_command_requested = Signal(str, str)  # (trigger, target) for main-thread GUI dispatch
     model_switched = Signal(str)                  # New model name
 
     def __init__(self, config: Optional[WidgetConfig] = None):
@@ -47,11 +49,12 @@ class DictationController(QObject):
         self.config = config or WidgetConfig.load()
         self.state = DictationState.IDLE
 
-        # Audio Recorder
+        # Audio Recorder with live phrase pause segmentation
         self.recorder = AudioRecorder(
             sample_rate=self.config.sample_rate,
             device=self.config.audio_device,
-            on_vu_meter=lambda v: self.vu_meter_updated.emit(v)
+            on_vu_meter=lambda v: self.vu_meter_updated.emit(v),
+            on_segment_ready=self._on_audio_segment_ready
         )
 
         # Modular STT Engine Manager, Lexer & Command Executor
@@ -65,6 +68,11 @@ class DictationController(QObject):
 
         self.worker_thread = threading.Thread(target=self._stt_worker_loop, daemon=True)
         self.worker_thread.start()
+
+    def _on_audio_segment_ready(self, audio_data: np.ndarray):
+        """Called whenever a phrase pause boundary is detected during recording."""
+        if audio_data is not None and len(audio_data) > 0:
+            self.audio_queue.put(audio_data)
 
     def switch_model(self, model_key: str) -> bool:
         """Switches active transcription model dynamically."""
@@ -113,18 +121,11 @@ class DictationController(QObject):
         if self.state == DictationState.IDLE:
             return None
 
-        # Capture audio chunks before reset
-        recorded_chunks = list(self.recorder.audio_chunks)
         saved_path = self.recorder.stop()
         self.state = DictationState.IDLE
         self.state_changed.emit(self.state)
         self.vu_meter_updated.emit(0.0)
         logger.info("Dictation state: IDLE")
-
-        if recorded_chunks:
-            # Send full utterance to STT worker
-            audio_arr = np.concatenate(recorded_chunks, axis=0).flatten()
-            self.audio_queue.put(audio_arr)
 
         if saved_path and saved_path.exists():
             duration = time.time() - self.recorder.start_time
@@ -133,7 +134,10 @@ class DictationController(QObject):
         return saved_path
 
     def _stt_worker_loop(self):
-        """Background thread running GPU medical transcription, lexer & command execution."""
+        """
+        Background thread running GPU medical transcription, lexer,
+        sequential speech interruption, and command execution.
+        """
         while self.is_worker_running:
             try:
                 audio_data = self.audio_queue.get(timeout=0.1)
@@ -145,33 +149,41 @@ class DictationController(QObject):
 
             try:
                 raw_text, _ = self.stt_manager.transcribe(audio_data, self.config.sample_rate)
-                if raw_text:
+                if raw_text and raw_text.strip():
                     # Pass through lookahead lexer to intercept commands & spoken punctuation
                     actions = self.lexer.process_transcription(raw_text)
 
                     for action in actions:
-                        if action.action_type == "COMMAND_TRIGGERED":
-                            # 1. Trigger visual 3-second toast & notify UI
+                        if action.action_type in ("TYPE_TEXT", "PASTE_TEXT"):
+                            formatted_text = action.text
+                            # 1. Stop active transcription: commit currently dictated text
+                            if self.config.dictation_target == "cursor":
+                                self.injector.inject_text(formatted_text)
+                                time.sleep(0.04)  # Allow clipboard paste to settle
+
+                            self.transcription_received.emit(formatted_text)
+
+                        elif action.action_type == "COMMAND_TRIGGERED":
+                            # Preceding text has already been committed in the prior action
+                            time.sleep(0.04)
+
+                            # 2. Run the command & display visual toast
                             self.command_recognized.emit(
                                 action.command_name,
                                 action.hotkey,
                                 action.description
                             )
 
-                            # 2. Execute voice command on active window or Dictation Box
-                            self.command_executor.execute_command(
-                                trigger=action.trigger,
-                                target=self.config.dictation_target
+                            # Request command execution on target (thread-safe main thread dispatch)
+                            self.execute_command_requested.emit(
+                                action.trigger,
+                                self.config.dictation_target
                             )
                             self.command_executed.emit(action.trigger)
 
-                        elif action.action_type in ("TYPE_TEXT", "PASTE_TEXT"):
-                            formatted_text = action.text
-                            # Route to active cursor or dictation box
-                            if self.config.dictation_target == "cursor":
-                                self.injector.inject_text(formatted_text)
-
-                            self.transcription_received.emit(formatted_text)
+                            # 3. Resume new transcription at wherever the new cursor is
+                            # Brief pause allows active window or Dictation Box to move cursor
+                            time.sleep(0.06)
 
             except Exception as e:
                 logger.error(f"Worker transcription error: {e}")

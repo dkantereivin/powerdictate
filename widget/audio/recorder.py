@@ -1,15 +1,15 @@
 """
 Microphone Audio Recorder & WAV File Exporter
 ==============================================
-Captures 16kHz audio with real-time VU meter calculation and writes
-clean WAV files to the recordings/ directory on stop.
+Captures 16kHz audio with real-time VU meter calculation, phrase-level
+pause segmentation for live transcription, and clean WAV file exports.
 """
 
 import time
 import wave
 import logging
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 import numpy as np
 import sounddevice as sd
 
@@ -20,22 +20,27 @@ RECORDINGS_DIR = Path("recordings")
 
 class AudioRecorder:
     """
-    Manages live microphone capture, real-time VU levels, and WAV recording.
+    Manages live microphone capture, real-time VU levels, pause segmentation, and WAV recording.
     """
 
     def __init__(
         self,
         sample_rate: int = 16000,
         device: Optional[str] = None,
-        on_vu_meter: Optional[Callable[[float], None]] = None
+        on_vu_meter: Optional[Callable[[float], None]] = None,
+        on_segment_ready: Optional[Callable[[np.ndarray], None]] = None
     ):
         self.sample_rate = sample_rate
         self.device = device
         self.on_vu_meter = on_vu_meter or (lambda v: None)
+        self.on_segment_ready = on_segment_ready
 
         self.is_recording = False
         self.stream: Optional[sd.InputStream] = None
-        self.audio_chunks = []
+        self.audio_chunks: List[np.ndarray] = []
+        self.phrase_chunks: List[np.ndarray] = []
+        self.speech_active = False
+        self.silence_blocks = 0
         self.start_time = 0.0
 
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -46,18 +51,45 @@ class AudioRecorder:
             return True
 
         self.audio_chunks = []
+        self.phrase_chunks = []
+        self.speech_active = False
+        self.silence_blocks = 0
         self.is_recording = True
         self.start_time = time.time()
 
         def audio_callback(indata, frames, time_info, status):
-            if self.is_recording:
-                # Compute RMS for smooth VU meter
-                rms = np.sqrt(np.mean(indata ** 2))
-                vu = min(100.0, float(rms * 450.0))
-                self.on_vu_meter(vu)
+            if not self.is_recording:
+                return
 
-                # Store copy of audio frames
-                self.audio_chunks.append(indata.copy())
+            # Compute RMS for smooth VU meter
+            rms = np.sqrt(np.mean(indata ** 2))
+            vu = min(100.0, float(rms * 450.0))
+            self.on_vu_meter(vu)
+
+            # Store copy of audio frames for total recording
+            chunk = indata.copy()
+            self.audio_chunks.append(chunk)
+
+            # Phrase-level segmentation for live dictation & command interruption
+            if self.on_segment_ready is not None:
+                self.phrase_chunks.append(chunk)
+
+                if rms > 0.012:  # Speech detected
+                    self.speech_active = True
+                    self.silence_blocks = 0
+                else:  # Silence
+                    if self.speech_active:
+                        self.silence_blocks += 1
+                        # ~450ms of silence (7 blocks @ 64ms) triggers phrase boundary
+                        if self.silence_blocks >= 7:
+                            if self.phrase_chunks:
+                                phrase_data = np.concatenate(self.phrase_chunks, axis=0).flatten()
+                                self.phrase_chunks = []
+                                self.speech_active = False
+                                self.silence_blocks = 0
+                                # Require at least 0.35s of audio to avoid noise blips
+                                if len(phrase_data) >= int(self.sample_rate * 0.35):
+                                    self.on_segment_ready(phrase_data)
 
         try:
             self.stream = sd.InputStream(
@@ -92,11 +124,18 @@ class AudioRecorder:
                 pass
             self.stream = None
 
+        # Emit any trailing phrase chunk that hadn't met silence threshold yet
+        if self.on_segment_ready is not None and self.phrase_chunks:
+            phrase_data = np.concatenate(self.phrase_chunks, axis=0).flatten()
+            self.phrase_chunks = []
+            if len(phrase_data) >= int(self.sample_rate * 0.3):
+                self.on_segment_ready(phrase_data)
+
         if not self.audio_chunks:
             logger.warning("No audio recorded.")
             return None
 
-        # Concatenate audio into 1D float32 array
+        # Concatenate full session audio into 1D float32 array
         audio_data = np.concatenate(self.audio_chunks, axis=0).flatten()
         duration = len(audio_data) / self.sample_rate
 
@@ -119,12 +158,3 @@ class AudioRecorder:
         except Exception as e:
             logger.error(f"Failed to write WAV file: {e}")
             return None
-
-    def toggle(self) -> tuple[bool, Optional[Path]]:
-        """Toggles recording. Returns (is_recording_now, saved_file_path_if_stopped)."""
-        if self.is_recording:
-            saved_path = self.stop()
-            return False, saved_path
-        else:
-            started = self.start()
-            return started, None

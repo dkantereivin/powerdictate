@@ -244,7 +244,34 @@ class DictationBoxWidget(QWidget):
             suffix_text=suffix_text
         )
 
+        # If inserting punctuation directly after a trailing space, remove the space so it attaches cleanly
+        if insert_chunk.lstrip().startswith((".", ",", ";", ":", "!", "?")):
+            while pos > 0 and full_text[pos - 1] == " ":
+                cursor.deletePreviousChar()
+                pos -= 1
+
         cursor.insertText(insert_chunk)
+        self.text_edit.setTextCursor(cursor)
+        self.text_edit.ensureCursorVisible()
+
+    def insert_template(self, template_text: str):
+        """
+        Inserts structured multi-line template directly, preserving exact
+        capitalization, indentation, newlines, and [***] bracket placeholders.
+        """
+        if not template_text:
+            return
+
+        cursor = self.text_edit.textCursor()
+        pos = cursor.selectionStart() if cursor.hasSelection() else cursor.position()
+        full_text = self.text_edit.toPlainText()
+
+        # If not at start of document and previous text doesn't end with newline, prepend newline
+        prefix = full_text[:pos]
+        if prefix and not prefix.endswith("\n"):
+            cursor.insertText("\n")
+
+        cursor.insertText(template_text)
         self.text_edit.setTextCursor(cursor)
         self.text_edit.ensureCursorVisible()
 

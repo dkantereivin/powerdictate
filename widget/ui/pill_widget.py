@@ -245,6 +245,7 @@ class FloatingPillWidget(QWidget):
         self.controller.recording_saved.connect(self._on_recording_saved)
         self.controller.transcription_received.connect(self._on_transcription_received)
         self.controller.command_recognized.connect(self._on_command_recognized)
+        self.controller.execute_command_requested.connect(self._on_execute_command_requested)
         self.controller.model_switched.connect(self._on_model_switched)
 
     def _init_hotkeys(self):
@@ -293,6 +294,16 @@ class FloatingPillWidget(QWidget):
     def _on_command_recognized(self, name: str, hotkey: str, description: str):
         """Displays transient 3.0s command toast badge beside the floating pill."""
         self.toast.show_command(name, hotkey, self.geometry())
+
+    @Slot(str, str)
+    def _on_execute_command_requested(self, trigger: str, target: str):
+        """Executes voice command on the main GUI thread safely."""
+        box = self.dictation_box if self.dictation_box.isVisible() else None
+        self.controller.command_executor.execute_command(
+            trigger=trigger,
+            target=target,
+            dictation_box=box
+        )
 
     @Slot(str)
     def _on_model_switched(self, model_name: str):

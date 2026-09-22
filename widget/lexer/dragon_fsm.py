@@ -99,12 +99,16 @@ PUNCTUATION_MAP = {
 }
 
 
+from widget.commands.registry import CommandRegistry
+
+
 class DragonLexer:
     """
     Finite-State Machine trapping commands, spoken punctuation, and vocal macros.
     """
 
-    def __init__(self):
+    def __init__(self, registry: Optional[CommandRegistry] = None):
+        self.registry = registry or CommandRegistry()
         self.capitalize_next = True
         self.last_typed_length = 0
 
@@ -133,10 +137,22 @@ class DragonLexer:
         while i < n:
             # 1. Check 3-word combinations
             if i + 3 <= n:
-                three_words = " ".join(tokens[i:i+3]).lower().rstrip(".,?!:;")
-                if three_words in VOICE_COMMANDS:
+                three_raw = " ".join(tokens[i:i+3])
+                three_words = three_raw.lower().strip("[]()\"'.,?!:; ")
+                cmd = self.registry.get_command(three_words)
+
+                if cmd and (cmd.action == "insert_template" or cmd.template_text):
                     flush_current_words()
-                    cmd_name, hotkey, desc = VOICE_COMMANDS[three_words]
+                    actions.append(LexerAction(action_type="PASTE_TEXT", text=cmd.template_text))
+                    self.capitalize_next = True
+                    i += 3
+                    continue
+
+                if cmd or three_words in VOICE_COMMANDS:
+                    flush_current_words()
+                    cmd_name = cmd.name if cmd else VOICE_COMMANDS[three_words][0]
+                    hotkey = cmd.hotkey if cmd else VOICE_COMMANDS[three_words][1]
+                    desc = cmd.description if cmd else VOICE_COMMANDS[three_words][2]
                     actions.append(LexerAction(
                         action_type="COMMAND_TRIGGERED",
                         trigger=three_words,
@@ -150,30 +166,9 @@ class DragonLexer:
 
             # 2. Check 2-word combinations
             if i + 2 <= n:
-                two_words = " ".join(tokens[i:i+2]).lower().rstrip(".,?!:;")
-                # Check 2-word commands
-                if two_words in VOICE_COMMANDS:
-                    flush_current_words()
-                    cmd_name, hotkey, desc = VOICE_COMMANDS[two_words]
-                    actions.append(LexerAction(
-                        action_type="COMMAND_TRIGGERED",
-                        trigger=two_words,
-                        command_name=cmd_name,
-                        hotkey=hotkey,
-                        description=desc
-                    ))
-                    self.capitalize_next = True
-                    i += 2
-                    continue
-
-                # Check 2-word macros
-                if two_words in VOCAL_MACROS:
-                    flush_current_words()
-                    macro_text = VOCAL_MACROS[two_words]
-                    actions.append(LexerAction(action_type="PASTE_TEXT", text=macro_text))
-                    self.capitalize_next = True
-                    i += 2
-                    continue
+                two_raw = " ".join(tokens[i:i+2])
+                two_words = two_raw.lower().strip("[]()\"'.,?!:; ")
+                cmd = self.registry.get_command(two_words)
 
                 # Check 2-word punctuation (e.g. "new line", "new paragraph", "number 1")
                 if two_words in PUNCTUATION_MAP:
@@ -187,24 +182,35 @@ class DragonLexer:
                     i += 2
                     continue
 
+                # Check 2-word templates / macros
+                if (cmd and (cmd.action == "insert_template" or cmd.template_text)) or two_words in VOCAL_MACROS:
+                    flush_current_words()
+                    tpl_text = cmd.template_text if (cmd and cmd.template_text) else VOCAL_MACROS[two_words]
+                    actions.append(LexerAction(action_type="PASTE_TEXT", text=tpl_text))
+                    self.capitalize_next = True
+                    i += 2
+                    continue
+
+                # Check 2-word commands
+                if cmd or two_words in VOICE_COMMANDS:
+                    flush_current_words()
+                    cmd_name = cmd.name if cmd else VOICE_COMMANDS[two_words][0]
+                    hotkey = cmd.hotkey if cmd else VOICE_COMMANDS[two_words][1]
+                    desc = cmd.description if cmd else VOICE_COMMANDS[two_words][2]
+                    actions.append(LexerAction(
+                        action_type="COMMAND_TRIGGERED",
+                        trigger=two_words,
+                        command_name=cmd_name,
+                        hotkey=hotkey,
+                        description=desc
+                    ))
+                    self.capitalize_next = True
+                    i += 2
+                    continue
+
             # 3. Check 1-word tokens
             token = tokens[i]
-            token_clean = token.lower().rstrip(".,?!:;")
-
-            # 1-word commands (e.g. "undo", "tab")
-            if token_clean in VOICE_COMMANDS:
-                flush_current_words()
-                cmd_name, hotkey, desc = VOICE_COMMANDS[token_clean]
-                actions.append(LexerAction(
-                    action_type="COMMAND_TRIGGERED",
-                    trigger=token_clean,
-                    command_name=cmd_name,
-                    hotkey=hotkey,
-                    description=desc
-                ))
-                self.capitalize_next = True
-                i += 1
-                continue
+            token_clean = token.lower().strip("[]()\"'.,?!:; ")
 
             # 1-word punctuation (e.g. "period", "comma", "colon")
             if token_clean in PUNCTUATION_MAP:
@@ -218,8 +224,33 @@ class DragonLexer:
                     flush_current_words()
                     actions.append(LexerAction(action_type="TYPE_TEXT", text=punct))
                     self.capitalize_next = True
-                else:
-                    current_words.append(punct)
+                i += 1
+                continue
+
+            cmd = self.registry.get_command(token_clean)
+
+            # 1-word templates
+            if cmd and (cmd.action == "insert_template" or cmd.template_text):
+                flush_current_words()
+                actions.append(LexerAction(action_type="PASTE_TEXT", text=cmd.template_text))
+                self.capitalize_next = True
+                i += 1
+                continue
+
+            # 1-word commands (e.g. "undo", "tab")
+            if cmd or token_clean in VOICE_COMMANDS:
+                flush_current_words()
+                cmd_name = cmd.name if cmd else VOICE_COMMANDS[token_clean][0]
+                hotkey = cmd.hotkey if cmd else VOICE_COMMANDS[token_clean][1]
+                desc = cmd.description if cmd else VOICE_COMMANDS[token_clean][2]
+                actions.append(LexerAction(
+                    action_type="COMMAND_TRIGGERED",
+                    trigger=token_clean,
+                    command_name=cmd_name,
+                    hotkey=hotkey,
+                    description=desc
+                ))
+                self.capitalize_next = True
                 i += 1
                 continue
 

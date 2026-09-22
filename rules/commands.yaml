@@ -1,104 +1,200 @@
-# Voice Navigation & Editing Commands Configuration
-# Defines voice triggers, keyboard shortcuts, and actions
+# Voice Navigation, Formatting, & Template Commands Configuration
+# =================================================================
+# Allows quick modification of spoken triggers, shortcuts, and clinical templates.
+# Supports template bracket fields [***] for seamless "next field" jumping.
 
 commands:
-  # Navigation Commands
+  # -----------------------------------------------------------------
+  # Navigation & Template Bracket Commands
+  # -----------------------------------------------------------------
   "next field":
     name: "Next Field"
     hotkey: "Tab"
-    key_code: "Tab"
     action: "navigate_next_field"
-    description: "Jumps to next template bracket or form field"
+    description: "Jumps to next [***] template bracket or EMR form field"
 
   "jump next":
     name: "Next Field"
     hotkey: "Tab"
-    key_code: "Tab"
     action: "navigate_next_field"
-    description: "Jumps to next template bracket or form field"
+    description: "Jumps to next [***] template bracket or EMR form field"
 
   "next bracket":
     name: "Next Field"
     hotkey: "Tab"
-    key_code: "Tab"
     action: "navigate_next_field"
-    description: "Jumps to next template bracket"
+    description: "Jumps to next template bracket [***]"
 
   "previous field":
     name: "Previous Field"
     hotkey: "Shift+Tab"
-    key_code: "Shift+Tab"
     action: "navigate_prev_field"
     description: "Jumps to previous template field"
 
   "prev field":
     name: "Previous Field"
     hotkey: "Shift+Tab"
-    key_code: "Shift+Tab"
     action: "navigate_prev_field"
     description: "Jumps to previous template field"
 
-  # Editing & Deletion Commands
+  # -----------------------------------------------------------------
+  # Whitespace & Indentation
+  # -----------------------------------------------------------------
+  "tab":
+    name: "Tab Space"
+    hotkey: "Tab"
+    action: "tab_space"
+    description: "Inserts a tab space or indentation"
+
+  "tab space":
+    name: "Tab Space"
+    hotkey: "Tab"
+    action: "tab_space"
+    description: "Inserts a tab space or indentation"
+
+  "tabspace":
+    name: "Tab Space"
+    hotkey: "Tab"
+    action: "tab_space"
+    description: "Inserts a tab space or indentation"
+
+  "indent":
+    name: "Indent"
+    hotkey: "Tab"
+    action: "tab_space"
+    description: "Inserts an indentation"
+
+  # -----------------------------------------------------------------
+  # Editing, Undo & Clearing
+  # -----------------------------------------------------------------
   "scratch that":
     name: "Scratch That"
     hotkey: "Ctrl+Z"
-    key_code: "Ctrl+Z"
     action: "undo"
     description: "Undoes or deletes the last spoken phrase"
 
   "delete that":
     name: "Scratch That"
     hotkey: "Ctrl+Z"
-    key_code: "Ctrl+Z"
     action: "undo"
     description: "Undoes or deletes the last spoken phrase"
 
   "undo":
     name: "Undo"
     hotkey: "Ctrl+Z"
-    key_code: "Ctrl+Z"
     action: "undo"
     description: "Undoes the last action"
 
   "select all":
     name: "Select All"
     hotkey: "Ctrl+A"
-    key_code: "Ctrl+A"
     action: "select_all"
     description: "Selects all text in current field"
 
   "clear field":
     name: "Clear Field"
     hotkey: "Ctrl+A, Backspace"
-    key_code: "Clear"
     action: "clear_field"
     description: "Clears all text in the active field"
 
   "clear all":
     name: "Clear All"
     hotkey: "Ctrl+A, Backspace"
-    key_code: "Clear"
     action: "clear_field"
     description: "Clears all text in the active field"
 
-  # Cursor Movement Commands
+  # -----------------------------------------------------------------
+  # Cursor Navigation
+  # -----------------------------------------------------------------
   "go to end":
     name: "End of Text"
     hotkey: "End"
-    key_code: "End"
     action: "cursor_end"
     description: "Moves cursor to end of text"
 
   "go to start":
     name: "Start of Text"
     hotkey: "Home"
-    key_code: "Home"
     action: "cursor_start"
     description: "Moves cursor to beginning of text"
 
   "go to beginning":
     name: "Start of Text"
     hotkey: "Home"
-    key_code: "Home"
     action: "cursor_start"
     description: "Moves cursor to beginning of text"
+
+
+# -------------------------------------------------------------------
+# Clinical & Document Templates (Macros)
+# Use [***] for bracket placeholder fields navigable via "next field"
+# -------------------------------------------------------------------
+templates:
+  "no pe":
+    name: "Normal Physical Exam"
+    description: "Standard normal complete physical examination"
+    text: |
+      Constitutional: Alert and oriented x3, no acute distress.
+      HEENT: Normocephalic, atraumatic. Pupils equal, round, reactive to light.
+      Cardiovascular: Regular rate and rhythm, normal S1 and S2, no murmurs, gallops, or rubs.
+      Pulmonary: Clear to auscultation bilaterally, no wheezes, rales, or rhonchi.
+      Abdomen: Soft, non-tender, non-distended, normal active bowel sounds.
+      Extremities: Warm and well-perfused, no cyanosis, clubbing, or edema.
+      Neurological: Alert, oriented, non-focal neurological examination.
+
+  "negative pe":
+    name: "Normal Physical Exam"
+    description: "Concise normal physical exam"
+    text: "Physical Exam: Alert, oriented x3, no acute distress. Heart regular rate and rhythm, normal S1/S2. Lungs clear bilaterally. Abdomen soft, non-tender. Extremities without edema."
+
+  "normal cardiac":
+    name: "Normal Cardiac Exam"
+    description: "Cardiovascular exam template"
+    text: "Cardiovascular: Regular rate and rhythm. S1 and S2 present. No murmurs, gallops, or friction rubs. Peripheral pulses 2+ intact bilaterally."
+
+  "normal lungs":
+    name: "Normal Pulmonary Exam"
+    description: "Pulmonary examination template"
+    text: "Pulmonary: Clear to auscultation bilaterally. No wheezes, crackles, or rhonchi. Respirations unlabored on room air."
+
+  "hf plan":
+    name: "Heart Failure Plan"
+    description: "Inpatient heart failure management plan"
+    text: |
+      Heart Failure Management Plan:
+      1. Continue furosemide [***] mg IV daily.
+      2. Strict intake and output monitoring, daily standing weights.
+      3. Fluid restriction 1.5 - 2.0 L/day, 2g sodium cardiac diet.
+      4. Morning BMP for renal function and potassium monitoring.
+      5. Continue guideline-directed medical therapy as hemodynamically tolerated.
+
+  "soap note":
+    name: "SOAP Note"
+    description: "Standard clinical SOAP note with bracket fields"
+    text: |
+      SUBJECTIVE:
+      [***]
+
+      OBJECTIVE:
+      Vitals: [***]
+      Physical Exam: [***]
+      Labs & Diagnostics: [***]
+
+      ASSESSMENT:
+      [***]
+
+      PLAN:
+      1. [***]
+      2. [***]
+
+  "discharge summary":
+    name: "Discharge Summary"
+    description: "Hospital discharge summary template"
+    text: |
+      DISCHARGE SUMMARY:
+      Admission Date: [***]
+      Discharge Date: [***]
+      Discharge Diagnosis: [***]
+      Hospital Course: [***]
+      Discharge Medications: [***]
+      Follow-up: [***]
