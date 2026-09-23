@@ -124,6 +124,19 @@ commands:
     action: "cursor_start"
     description: "Moves cursor to beginning of text"
 
+  # -----------------------------------------------------------------
+  # Transfer & Finalization
+  # -----------------------------------------------------------------
+  "transfer note":
+    name: "Transfer Note"
+    action: "transfer_text"
+    description: "Resolves template defaults and copies note to clipboard"
+
+  "transfer text":
+    name: "Transfer Note"
+    action: "transfer_text"
+    description: "Resolves template defaults and copies note to clipboard"
+
 
 # -------------------------------------------------------------------
 # Clinical & Document Templates (Macros)
@@ -198,3 +211,13 @@ templates:
       Hospital Course: [***]
       Discharge Medications: [***]
       Follow-up: [***]
+
+  "vte prophylaxis":
+    name: "VTE Prophylaxis"
+    description: "VTE risk assessment with interactive picklists"
+    text: "VTE Prophylaxis: [Indicated/Contraindicated]. Plan: [Enoxaparin 40mg SubQ daily/Heparin 5000 units SubQ TID/SCDs only]. History of HIT: [No/Yes]."
+
+  "review of systems":
+    name: "Review of Systems"
+    description: "Standard ROS with defaults"
+    text: "Constitutional: [Negative/Fever/Fatigue/Weight loss]. Eyes: [Negative/Vision changes]. ENT: [Negative/Sore throat/Congestion]. Cardiovascular: [Negative/Chest pain/Palpitations]. Respiratory: [Negative/Shortness of breath/Cough]. GI: [Negative/Nausea/Vomiting/Abdominal pain]. GU: [Negative/Dysuria]. Musculoskeletal: [Negative/Myalgias/Joint pain]. Neurological: [Negative/Headache/Dizziness]."

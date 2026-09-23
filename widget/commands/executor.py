@@ -112,38 +112,17 @@ class CommandExecutor:
                 return True
 
             elif action == "navigate_next_field":
-                # Template jumping: Find next '[' bracket or '[***]' field
-                cursor = text_edit.textCursor()
-                doc = text_edit.document()
-                found_cursor = doc.find("[", cursor)
-
-                # Loop back to document start if no more brackets after cursor
-                if found_cursor.isNull():
-                    start_cursor = QTextCursor(doc)
-                    found_cursor = doc.find("[", start_cursor)
-
-                if not found_cursor.isNull():
-                    close_cursor = doc.find("]", found_cursor)
-                    if not close_cursor.isNull():
-                        found_cursor.setPosition(close_cursor.position(), QTextCursor.MoveMode.KeepAnchor)
-                    text_edit.setTextCursor(found_cursor)
-                    text_edit.ensureCursorVisible()
-                    return True
+                return dictation_box.navigate_next_field()
 
             elif action == "navigate_first_field":
                 return dictation_box.focus_first_field(from_pos=0)
 
             elif action == "navigate_prev_field":
-                cursor = text_edit.textCursor()
-                doc = text_edit.document()
-                found_cursor = doc.find("[", cursor, QTextDocument.FindFlag.FindBackward)
-                if not found_cursor.isNull():
-                    close_cursor = doc.find("]", found_cursor)
-                    if not close_cursor.isNull():
-                        found_cursor.setPosition(close_cursor.position(), QTextCursor.MoveMode.KeepAnchor)
-                    text_edit.setTextCursor(found_cursor)
-                    text_edit.ensureCursorVisible()
-                    return True
+                return dictation_box.navigate_prev_field()
+
+            elif action == "transfer_text":
+                dictation_box.transfer_text()
+                return True
 
             elif action == "undo":
                 text_edit.undo()
