@@ -338,10 +338,18 @@ class FloatingPillWidget(QWidget):
             QTimer.singleShot(2500, lambda: self._reset_status())
 
     def _position_dictation_box(self):
-        """Positions Dictation Box cleanly below the floating pill."""
+        """Positions Dictation Box cleanly below the floating pill with screen boundary clamping."""
         pill_geo = self.geometry()
+        screen = QApplication.primaryScreen()
+        screen_geo = screen.availableGeometry() if screen else None
+
         x = pill_geo.x() + (pill_geo.width() - self.dictation_box.width())
         y = pill_geo.y() + pill_geo.height() + 8
+
+        if screen_geo:
+            x = max(screen_geo.left() + 16, min(x, screen_geo.right() - self.dictation_box.width() - 16))
+            y = max(screen_geo.top() + 16, min(y, screen_geo.bottom() - self.dictation_box.height() - 16))
+
         self.dictation_box.move(x, y)
 
     def _reset_status(self):

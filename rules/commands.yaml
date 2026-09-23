@@ -13,18 +13,6 @@ commands:
     action: "navigate_next_field"
     description: "Jumps to next [***] template bracket or EMR form field"
 
-  "jump next":
-    name: "Next Field"
-    hotkey: "Tab"
-    action: "navigate_next_field"
-    description: "Jumps to next [***] template bracket or EMR form field"
-
-  "next bracket":
-    name: "Next Field"
-    hotkey: "Tab"
-    action: "navigate_next_field"
-    description: "Jumps to next template bracket [***]"
-
   "previous field":
     name: "Previous Field"
     hotkey: "Shift+Tab"
@@ -36,6 +24,18 @@ commands:
     hotkey: "Shift+Tab"
     action: "navigate_prev_field"
     description: "Jumps to previous template field"
+
+  "first field":
+    name: "First Field"
+    hotkey: "Ctrl+Home, Tab"
+    action: "navigate_first_field"
+    description: "Jumps to the first [***] bracket placeholder in the note"
+
+  "go to first field":
+    name: "First Field"
+    hotkey: "Ctrl+Home, Tab"
+    action: "navigate_first_field"
+    description: "Jumps to the first [***] bracket placeholder in the note"
 
   # -----------------------------------------------------------------
   # Whitespace & Indentation

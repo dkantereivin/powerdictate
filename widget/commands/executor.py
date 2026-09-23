@@ -130,6 +130,9 @@ class CommandExecutor:
                     text_edit.ensureCursorVisible()
                     return True
 
+            elif action == "navigate_first_field":
+                return dictation_box.focus_first_field(from_pos=0)
+
             elif action == "navigate_prev_field":
                 cursor = text_edit.textCursor()
                 doc = text_edit.document()
@@ -198,6 +201,12 @@ class CommandExecutor:
 
                 elif action == "navigate_prev_field":
                     self._press_hotkey('Shift_L', 'Tab')
+                    return True
+
+                elif action == "navigate_first_field":
+                    self._press_hotkey('Control_L', 'Home')
+                    time.sleep(0.02)
+                    self._press_key('Tab')
                     return True
 
                 elif action == "undo":

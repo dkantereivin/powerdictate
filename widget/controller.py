@@ -156,34 +156,35 @@ class DictationController(QObject):
                     for action in actions:
                         if action.action_type in ("TYPE_TEXT", "PASTE_TEXT"):
                             formatted_text = action.text
-                            # 1. Stop active transcription: commit currently dictated text
+                            # 1. Commit text into active cursor or emit to dictation box
                             if self.config.dictation_target == "cursor":
                                 self.injector.inject_text(formatted_text)
-                                time.sleep(0.04)  # Allow clipboard paste to settle
+                                time.sleep(0.05)  # Allow clipboard paste to settle
 
                             self.transcription_received.emit(formatted_text)
 
                         elif action.action_type == "COMMAND_TRIGGERED":
-                            # Preceding text has already been committed in the prior action
                             time.sleep(0.04)
 
-                            # 2. Run the command & display visual toast
+                            # 2. Display visual toast
                             self.command_recognized.emit(
                                 action.command_name,
                                 action.hotkey,
                                 action.description
                             )
 
-                            # Request command execution on target (thread-safe main thread dispatch)
-                            self.execute_command_requested.emit(
-                                action.trigger,
-                                self.config.dictation_target
-                            )
+                            # 3. Execute command on target
+                            if self.config.dictation_target == "box":
+                                # Qt main-thread safe execution for Dictation Box
+                                self.execute_command_requested.emit(action.trigger, "box")
+                            else:
+                                # Synchronous hardware keypress directly on active OS window
+                                self.command_executor.execute_command(action.trigger, target="cursor")
+
                             self.command_executed.emit(action.trigger)
 
-                            # 3. Resume new transcription at wherever the new cursor is
-                            # Brief pause allows active window or Dictation Box to move cursor
-                            time.sleep(0.06)
+                            # 4. Allow active application / cursor to settle before next chunk
+                            time.sleep(0.08)
 
             except Exception as e:
                 logger.error(f"Worker transcription error: {e}")

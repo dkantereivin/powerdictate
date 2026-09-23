@@ -2,11 +2,11 @@
 Multi-Tier Active Window Keystroke & Clipboard Injector
 ======================================================
 Combines:
-1. X11 XTest Direct Clipboard Paste (Ctrl+V / Primary Selection)
-2. PyAutoGUI Synthetic Key Injection
-3. Kernel-level UInput virtual hardware device
+1. Direct Keypress Simulation (Return, Tab) for whitespace & navigation
+2. X11 XTest Direct Clipboard Paste (Ctrl+V / Primary Selection)
+3. PyAutoGUI / UInput Fallbacks
 Guaranteeing 100% reliable in-window typing into MS Word, LibreOffice,
-browsers, terminals, and Citrix screens.
+browsers, text editors, terminals, and Citrix screens.
 """
 
 import sys
@@ -16,7 +16,7 @@ import pyperclip
 
 logger = logging.getLogger("widget.injector")
 
-# 1. Try X11 XTest (Primary for X11 / XWayland)
+# Try X11 XTest
 HAS_XTEST = False
 try:
     if sys.platform.startswith("linux"):
@@ -31,17 +31,7 @@ try:
 except Exception as e:
     logger.debug(f"XTest not available: {e}")
 
-# 2. Try Linux UInput
-HAS_UINPUT = False
-try:
-    if sys.platform.startswith("linux"):
-        import evdev
-        from evdev import UInput, ecodes
-        HAS_UINPUT = True
-except Exception:
-    pass
-
-# 3. Fallback PyAutoGUI
+# Fallback PyAutoGUI
 try:
     import pyautogui
     pyautogui.PAUSE = 0.01
@@ -52,100 +42,120 @@ except Exception:
 
 class InputInjector:
     """
-    High-reliability in-window cursor text injector.
+    High-reliability in-window cursor text and keystroke injector.
     """
 
-    def __init__(self, paste_threshold_chars: int = 6):
-        self.paste_threshold = paste_threshold_chars
+    def __init__(self):
         self.x11_disp = None
-        self.ctrl_keycode = None
-        self.v_keycode = None
-        self.uinput = None
+        self.key_map = {}
 
         if HAS_XTEST:
             try:
                 self.x11_disp = Xlib.display.Display()
-                ctrl_sym = Xlib.XK.string_to_keysym('Control_L')
-                v_sym = Xlib.XK.string_to_keysym('v')
-                self.ctrl_keycode = self.x11_disp.keysym_to_keycode(ctrl_sym)
-                self.v_keycode = self.x11_disp.keysym_to_keycode(v_sym)
+                for key_name in ['Return', 'Tab', 'BackSpace', 'Control_L', 'v']:
+                    sym = Xlib.XK.string_to_keysym(key_name)
+                    self.key_map[key_name] = self.x11_disp.keysym_to_keycode(sym)
             except Exception as e:
                 logger.warning(f"Failed to setup XTest display: {e}")
                 self.x11_disp = None
 
-        if HAS_UINPUT and self.x11_disp is None:
+    def press_key(self, key_name: str) -> bool:
+        """Sends a single hardware keypress directly to active window."""
+        code = self.key_map.get(key_name)
+        if code and self.x11_disp:
             try:
-                self.uinput = UInput()
+                import Xlib.X
+                import Xlib.ext.xtest
+                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyPress, code)
+                self.x11_disp.flush()
+                time.sleep(0.01)
+                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyRelease, code)
+                self.x11_disp.flush()
+                time.sleep(0.02)
+                return True
+            except Exception as e:
+                logger.error(f"XTest press_key error: {e}")
+
+        if HAS_PYAUTOGUI:
+            try:
+                pyautogui.press(key_name.lower())
+                return True
             except Exception:
                 pass
+        return False
 
     def inject_text(self, text: str) -> bool:
         """Injects text into the active focused window at current cursor."""
         if not text:
             return False
 
-        clean_text = text.strip()
-        if not clean_text:
-            return False
+        # 1. Direct hardware keystroke for whitespace & linebreaks
+        if text == "\n":
+            return self.press_key('Return')
+        elif text == "\n\n":
+            self.press_key('Return')
+            time.sleep(0.01)
+            return self.press_key('Return')
+        elif text == "\t":
+            return self.press_key('Tab')
 
-        formatted_text = clean_text + " "
+        # 2. Format body: preserve multi-line templates, add single space for words
+        if "\n" in text:
+            formatted_text = text
+        else:
+            clean = text.strip()
+            if not clean:
+                return False
+            formatted_text = clean + " "
 
-        # 1. Update clipboard
+        # 3. Synchronize clipboard via Qt (instantaneous X11 shared memory) or pyperclip
         try:
-            pyperclip.copy(formatted_text)
-        except Exception as e:
-            logger.error(f"Clipboard copy error: {e}")
+            from PySide6.QtWidgets import QApplication
+            from PySide6.QtGui import QClipboard
+            app = QApplication.instance()
+            if app:
+                cb = app.clipboard()
+                cb.setText(formatted_text, QClipboard.Mode.Clipboard)
+                cb.setText(formatted_text, QClipboard.Mode.Selection)
+            else:
+                pyperclip.copy(formatted_text)
+        except Exception:
+            try:
+                pyperclip.copy(formatted_text)
+            except Exception as e:
+                logger.error(f"Clipboard copy error: {e}")
 
         time.sleep(0.02)
 
-        # 2. Primary: X11 XTest Direct Paste (Instant & 100% Reliable under XWayland/X11)
-        if self.x11_disp is not None and self.ctrl_keycode and self.v_keycode:
+        # 4. Paste into active window via XTest Ctrl+V
+        ctrl_code = self.key_map.get('Control_L')
+        v_code = self.key_map.get('v')
+
+        if self.x11_disp is not None and ctrl_code and v_code:
             try:
                 import Xlib.X
                 import Xlib.ext.xtest
-
-                # Send Ctrl+V
-                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyPress, self.ctrl_keycode)
-                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyPress, self.v_keycode)
+                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyPress, ctrl_code)
+                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyPress, v_code)
                 self.x11_disp.flush()
                 time.sleep(0.01)
 
-                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyRelease, self.v_keycode)
-                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyRelease, self.ctrl_keycode)
+                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyRelease, v_code)
+                Xlib.ext.xtest.fake_input(self.x11_disp, Xlib.X.KeyRelease, ctrl_code)
                 self.x11_disp.flush()
-                time.sleep(0.02)
-
-                logger.info(f"[XTest] Injected into active cursor: '{clean_text}'")
+                time.sleep(0.03)
+                logger.info(f"[XTest] Injected text into active cursor: '{formatted_text[:30]}...'")
                 return True
             except Exception as e:
                 logger.warning(f"XTest paste error: {e}")
 
-        # 3. Fallback: PyAutoGUI hotkey paste
+        # Fallback PyAutoGUI
         if HAS_PYAUTOGUI:
             try:
-                import pyautogui
                 pyautogui.hotkey('ctrl', 'v')
-                time.sleep(0.02)
-                logger.info(f"[PyAutoGUI] Injected into active cursor: '{clean_text}'")
+                time.sleep(0.03)
                 return True
             except Exception as e:
                 logger.warning(f"PyAutoGUI paste error: {e}")
-
-        # 4. Fallback: Kernel UInput
-        if self.uinput is not None:
-            try:
-                import evdev.ecodes as ecodes
-                self.uinput.write(ecodes.EV_KEY, ecodes.KEY_LEFTCTRL, 1)
-                self.uinput.write(ecodes.EV_KEY, ecodes.KEY_V, 1)
-                self.uinput.syn()
-                time.sleep(0.01)
-                self.uinput.write(ecodes.EV_KEY, ecodes.KEY_V, 0)
-                self.uinput.write(ecodes.EV_KEY, ecodes.KEY_LEFTCTRL, 0)
-                self.uinput.syn()
-                time.sleep(0.02)
-                logger.info(f"[UInput] Injected into active cursor: '{clean_text}'")
-                return True
-            except Exception as e:
-                logger.error(f"UInput error: {e}")
 
         return False

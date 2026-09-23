@@ -140,10 +140,10 @@ class MedicalRuleEngine:
         if not normalized:
             return ""
 
-        prefix_clean = prefix_text.rstrip()
-        suffix_clean = suffix_text.lstrip()
+        prefix_clean = prefix_text.rstrip(" \t")
+        suffix_clean = suffix_text.lstrip(" \t")
 
-        # Check if cursor is at sentence beginning
+        # Check if cursor is at sentence beginning or start of a line
         is_sentence_start = (
             len(prefix_clean) == 0 or
             prefix_clean.endswith((".", "!", "?", ":", "\n"))
@@ -172,9 +172,9 @@ class MedicalRuleEngine:
         if starts_with_punct:
             needs_leading_space = False
         else:
-            needs_leading_space = len(prefix_text) > 0 and not prefix_text.endswith((" ", "\n", "("))
+            needs_leading_space = len(prefix_text) > 0 and not prefix_text.endswith((" ", "\n", "\t", "("))
 
-        needs_trailing_space = len(suffix_text) > 0 and not suffix_text.startswith((" ", "\n", ".", ",", "!", "?", ":", ";", ")"))
+        needs_trailing_space = len(suffix_text) > 0 and not suffix_text.startswith((" ", "\n", "\t", ".", ",", "!", "?", ":", ";", ")"))
 
         result = (
             (" " if needs_leading_space else "") +

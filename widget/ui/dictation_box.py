@@ -1,45 +1,53 @@
 """
-Dragon Medical One Style Floating Dictation Box (Interactive & Context-Aware)
-=============================================================================
-A floating, collapsible text editor window with full focus, manual typing,
-context-aware mid-sentence cursor insertions, newlines, and one-click transfer.
+Floating Interactive Dictation Box Widget
+=========================================
+Dragon-style floating text editor that allows real-time dictation,
+click-to-position text insertion, template bracket navigation ([***]),
+keyboard manual editing, and one-click transfer to active documents.
 """
 
-from pathlib import Path
+import re
+import logging
 from typing import Optional
 
-from PySide6.QtCore import Qt, QPoint, QTimer, Signal, Slot
-from PySide6.QtGui import QFont, QColor, QPainter, QClipboard, QTextCursor
+from PySide6.QtCore import Qt, QPoint, Signal, QTimer
+from PySide6.QtGui import (
+    QFont, QColor, QPainter, QTextCursor, QClipboard
+)
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QTextEdit, QGraphicsDropShadowEffect, QStyleOption, QStyle
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
+    QPushButton, QGraphicsDropShadowEffect, QApplication,
+    QStyleOption, QStyle, QFrame
 )
 
 from widget.lexer.rule_engine import MedicalRuleEngine
 
+logger = logging.getLogger("widget.dictation_box")
+
 
 class DictationBoxHeader(QWidget):
-    """Draggable header bar for the Dictation Box."""
+    """Draggable header bar for repositioning the Dictation Box."""
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.parent_window = parent
-        self.drag_position = QPoint()
+    def __init__(self, parent_box):
+        super().__init__(parent_box)
+        self.parent_box = parent_box
+        self.drag_pos = QPoint()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self.parent_window:
-            self.drag_position = event.globalPosition().toPoint() - self.parent_window.frameGeometry().topLeft()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_pos = event.globalPosition().toPoint() - self.parent_box.pos()
             event.accept()
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton and self.parent_window:
-            self.parent_window.move(event.globalPosition().toPoint() - self.drag_position)
+        if event.buttons() == Qt.MouseButton.LeftButton:
+            self.parent_box.move(event.globalPosition().toPoint() - self.drag_pos)
             event.accept()
 
 
 class DictationBoxWidget(QWidget):
     """
     Floating, Always-on-Top Dragon-style Interactive Dictation Box.
+    Spacious, clean, professional clinical text canvas.
     """
 
     text_transferred = Signal(str)
@@ -52,14 +60,15 @@ class DictationBoxWidget(QWidget):
         self._init_ui()
 
     def _init_window_flags(self):
-        # Window + Frameless + AlwaysOnTop (Allows standard keyboard & mouse focus)
         self.setWindowFlags(
             Qt.WindowType.Window |
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.resize(440, 260)
+        # Roughly 50% larger than original 440x260 -> 660x400
+        self.resize(660, 400)
+        self.setMinimumSize(520, 320)
 
     def paintEvent(self, event):
         opt = QStyleOption()
@@ -69,7 +78,7 @@ class DictationBoxWidget(QWidget):
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(0)
 
         # Container Frame
@@ -77,53 +86,58 @@ class DictationBoxWidget(QWidget):
         self.container.setObjectName("boxContainer")
         self.container.setStyleSheet("""
             #boxContainer {
-                background-color: #0f172a;
-                border: 1.5px solid #334155;
-                border-radius: 14px;
+                background-color: #0b1120;
+                border: 1.5px solid #1e293b;
+                border-radius: 16px;
             }
         """)
 
-        # Drop shadow
+        # Sleek layered shadow
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 200))
-        shadow.setOffset(0, 4)
+        shadow.setBlurRadius(24)
+        shadow.setColor(QColor(0, 0, 0, 220))
+        shadow.setOffset(0, 6)
         self.container.setGraphicsEffect(shadow)
 
         box_layout = QVBoxLayout(self.container)
-        box_layout.setContentsMargins(12, 10, 12, 10)
-        box_layout.setSpacing(8)
+        box_layout.setContentsMargins(14, 12, 14, 12)
+        box_layout.setSpacing(10)
 
         # 1. Draggable Header Bar
         self.header = DictationBoxHeader(self)
         header_layout = QHBoxLayout(self.header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(6)
+        header_layout.setSpacing(8)
 
-        # Title & Icon
-        title_lbl = QLabel("📝 Dictation Box", self.header)
+        # App Icon & Title
+        title_lbl = QLabel("📝 Dictation Canvas", self.header)
         title_lbl.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         title_lbl.setStyleSheet("color: #f8fafc;")
         header_layout.addWidget(title_lbl)
 
-        # Status badge
+        # Status badge (Target Indicator)
         self.status_badge = QLabel("● Active Target", self.header)
         self.status_badge.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
-        self.status_badge.setStyleSheet("color: #38bdf8; padding-left: 4px;")
+        self.status_badge.setStyleSheet("""
+            color: #38bdf8;
+            background-color: #0c4a6e;
+            padding: 2px 8px;
+            border-radius: 10px;
+        """)
         header_layout.addWidget(self.status_badge)
 
         header_layout.addStretch()
 
-        # Word count label
-        self.stats_lbl = QLabel("0 words", self.header)
+        # Word & Char Count
+        self.stats_lbl = QLabel("0 words • 0 chars", self.header)
         self.stats_lbl.setFont(QFont("Segoe UI", 8))
-        self.stats_lbl.setStyleSheet("color: #64748b;")
+        self.stats_lbl.setStyleSheet("color: #64748b; padding-right: 4px;")
         header_layout.addWidget(self.stats_lbl)
 
         # Close button
         close_btn = QPushButton("✕", self.header)
         close_btn.setToolTip("Close Dictation Box (Ctrl+D)")
-        close_btn.setFixedSize(22, 22)
+        close_btn.setFixedSize(24, 24)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         close_btn.setStyleSheet("""
@@ -131,7 +145,7 @@ class DictationBoxWidget(QWidget):
                 background: transparent;
                 color: #64748b;
                 border: none;
-                border-radius: 11px;
+                border-radius: 12px;
             }
             QPushButton:hover {
                 background-color: #ef4444;
@@ -146,20 +160,42 @@ class DictationBoxWidget(QWidget):
         # 2. Interactive & Modifiable Text Editor Area
         self.text_edit = QTextEdit(self.container)
         self.text_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.text_edit.setFont(QFont("Segoe UI", 10))
-        self.text_edit.setPlaceholderText("Dictate or type here. Click anywhere to move cursor and insert midway...")
+        self.text_edit.setFont(QFont("Segoe UI", 11))
+        self.text_edit.setPlaceholderText(
+            "Dictate or type clinical notes... Say 'Next field' to navigate [***] template fields."
+        )
         self.text_edit.setAcceptRichText(False)
         self.text_edit.setStyleSheet("""
             QTextEdit {
-                background-color: #1e293b;
+                background-color: #0f172a;
                 color: #f8fafc;
-                border: 1px solid #334155;
-                border-radius: 8px;
-                padding: 8px;
+                border: 1px solid #1e293b;
+                border-radius: 10px;
+                padding: 12px;
+                line-height: 1.45;
                 selection-background-color: #0284c7;
             }
             QTextEdit:focus {
                 border: 1.5px solid #0284c7;
+                background-color: #0f172a;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #0b1120;
+                width: 8px;
+                margin: 4px 0 4px 0;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #334155;
+                min-height: 24px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #475569;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
             }
         """)
         self.text_edit.textChanged.connect(self._update_stats)
@@ -168,8 +204,8 @@ class DictationBoxWidget(QWidget):
         # 3. Action Footer Bar
         footer = QWidget(self.container)
         footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(0, 0, 0, 0)
-        footer_layout.setSpacing(8)
+        footer_layout.setContentsMargins(0, 2, 0, 0)
+        footer_layout.setSpacing(10)
 
         # Clear Button
         clear_btn = QPushButton("🗑️ Clear", footer)
@@ -180,8 +216,8 @@ class DictationBoxWidget(QWidget):
                 background-color: #1e293b;
                 color: #94a3b8;
                 border: 1px solid #334155;
-                border-radius: 6px;
-                padding: 4px 10px;
+                border-radius: 7px;
+                padding: 5px 12px;
             }
             QPushButton:hover {
                 background-color: #334155;
@@ -192,23 +228,23 @@ class DictationBoxWidget(QWidget):
         footer_layout.addWidget(clear_btn)
 
         # Shortcut hint
-        hint_lbl = QLabel("Toggle Box: [Ctrl+D]", footer)
+        hint_lbl = QLabel("Toggle Box: [Ctrl+D]  •  Next Field: [Tab / Voice]", footer)
         hint_lbl.setFont(QFont("Segoe UI", 7, QFont.Weight.DemiBold))
-        hint_lbl.setStyleSheet("color: #64748b;")
+        hint_lbl.setStyleSheet("color: #475569;")
         footer_layout.addWidget(hint_lbl)
 
         footer_layout.addStretch()
 
         # Transfer / Paste Button
-        self.transfer_btn = QPushButton("📋 Transfer / Paste", footer)
+        self.transfer_btn = QPushButton("📋 Transfer Note", footer)
         self.transfer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.transfer_btn.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         self.transfer_btn.setStyleSheet("""
             QPushButton {
                 background-color: #0284c7;
                 color: white;
-                border-radius: 6px;
-                padding: 5px 14px;
+                border-radius: 7px;
+                padding: 6px 18px;
                 border: none;
             }
             QPushButton:hover {
@@ -224,9 +260,27 @@ class DictationBoxWidget(QWidget):
     def insert_at_cursor(self, new_text: str):
         """
         Context-aware insertion at active cursor position:
+        - Directly inserts newlines and whitespace commands.
+        - Preserves multi-line templates without flattening.
         - Adjusts capitalization and spacing according to surrounding text.
         """
-        if not new_text or not new_text.strip():
+        if not new_text:
+            return
+
+        # 1. Direct handling of newlines and whitespace commands
+        if new_text in ("\n", "\n\n", "\t"):
+            cursor = self.text_edit.textCursor()
+            cursor.insertText(new_text)
+            self.text_edit.setTextCursor(cursor)
+            self.text_edit.ensureCursorVisible()
+            return
+
+        # 2. Direct handling of multi-line templates (preserving exact casing and lines)
+        if "\n" in new_text:
+            self.insert_template(new_text)
+            return
+
+        if not new_text.strip():
             return
 
         cursor = self.text_edit.textCursor()
@@ -275,6 +329,34 @@ class DictationBoxWidget(QWidget):
         self.text_edit.setTextCursor(cursor)
         self.text_edit.ensureCursorVisible()
 
+        # Automatically focus first field in the template if brackets exist
+        if "[" in template_text:
+            self.focus_first_field(from_pos=pos)
+
+    def focus_first_field(self, from_pos: int = 0) -> bool:
+        """
+        Finds and selects the first [***] or [...] bracket field starting at or after from_pos.
+        If none found after from_pos, searches from document start (pos=0).
+        """
+        doc = self.text_edit.document()
+        start_cursor = QTextCursor(doc)
+        if from_pos > 0:
+            start_cursor.setPosition(min(from_pos, max(0, doc.characterCount() - 1)))
+
+        found_cursor = doc.find("[", start_cursor)
+        if found_cursor.isNull() and from_pos > 0:
+            start_cursor = QTextCursor(doc)
+            found_cursor = doc.find("[", start_cursor)
+
+        if not found_cursor.isNull():
+            close_cursor = doc.find("]", found_cursor)
+            if not close_cursor.isNull():
+                found_cursor.setPosition(close_cursor.position(), QTextCursor.MoveMode.KeepAnchor)
+            self.text_edit.setTextCursor(found_cursor)
+            self.text_edit.ensureCursorVisible()
+            return True
+        return False
+
     def append_transcription(self, new_text: str):
         """Alias for insert_at_cursor."""
         self.insert_at_cursor(new_text)
@@ -290,14 +372,16 @@ class DictationBoxWidget(QWidget):
 
         clipboard = QApplication.clipboard()
         clipboard.setText(text, QClipboard.Mode.Clipboard)
+        clipboard.setText(text, QClipboard.Mode.Selection)
 
         self.transfer_btn.setText("✓ Copied to Clipboard!")
         self.transfer_btn.setStyleSheet("""
             QPushButton {
                 background-color: #10b981;
                 color: white;
-                border-radius: 6px;
-                padding: 5px 14px;
+                border-radius: 7px;
+                padding: 6px 18px;
+                font-weight: bold;
                 border: none;
             }
         """)
@@ -305,13 +389,14 @@ class DictationBoxWidget(QWidget):
         self.text_transferred.emit(text)
 
     def _reset_transfer_btn(self):
-        self.transfer_btn.setText("📋 Transfer / Paste")
+        self.transfer_btn.setText("📋 Transfer Note")
         self.transfer_btn.setStyleSheet("""
             QPushButton {
                 background-color: #0284c7;
                 color: white;
-                border-radius: 6px;
-                padding: 5px 14px;
+                border-radius: 7px;
+                padding: 6px 18px;
+                font-weight: bold;
                 border: none;
             }
             QPushButton:hover {
@@ -323,4 +408,4 @@ class DictationBoxWidget(QWidget):
         text = self.text_edit.toPlainText().strip()
         words = len(text.split()) if text else 0
         chars = len(text)
-        self.stats_lbl.setText(f"{words} words ({chars} chars)")
+        self.stats_lbl.setText(f"{words} words • {chars} chars")

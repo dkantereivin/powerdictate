@@ -36,13 +36,14 @@ class CommandToastWidget(QWidget):
 
     def _init_window_flags(self):
         self.setWindowFlags(
-            Qt.WindowType.Window |
+            Qt.WindowType.ToolTip |
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.X11BypassWindowManagerHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.resize(230, 54)
 
