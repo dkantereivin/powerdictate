@@ -124,6 +124,38 @@ class CommandExecutor:
                 dictation_box.transfer_text()
                 return True
 
+            elif action == "snip_screen":
+                dictation_box.trigger_screen_snip()
+                return True
+
+            elif action == "parse_clipboard_image":
+                dictation_box.parse_clipboard_image()
+                return True
+
+            elif action == "batch_snip":
+                dictation_box.toggle_batch_mode()
+                return True
+
+            elif action == "auto_crawl_meditech":
+                dictation_box.auto_crawl_meditech()
+                return True
+
+            elif action == "llm_filter_labs":
+                dictation_box.run_llm_transform("pertinent_labs")
+                return True
+
+            elif action == "llm_transform":
+                dictation_box.show_llm_transform_menu()
+                return True
+
+            elif action == "llm_summarize_labs":
+                dictation_box.run_llm_transform("summarize_dictation")
+                return True
+
+            elif action == "llm_soap_format":
+                dictation_box.run_llm_transform("soap_format")
+                return True
+
             elif action == "undo":
                 text_edit.undo()
                 return True

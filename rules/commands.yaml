@@ -137,6 +137,105 @@ commands:
     action: "transfer_text"
     description: "Resolves template defaults and copies note to clipboard"
 
+  # -----------------------------------------------------------------
+  # Screen Snip & OCR Ingestion
+  # -----------------------------------------------------------------
+  "snip labs":
+    name: "Snip Labs"
+    action: "snip_screen"
+    description: "Launches crosshair snip to parse labs from screen"
+
+  "snip screen":
+    name: "Snip Labs"
+    action: "snip_screen"
+    description: "Launches crosshair snip to parse labs from screen"
+
+  "parse labs":
+    name: "Parse Image"
+    action: "parse_clipboard_image"
+    description: "Parses screenshot of labs currently on clipboard"
+
+  "parse image":
+    name: "Parse Image"
+    action: "parse_clipboard_image"
+    description: "Parses screenshot currently on clipboard"
+
+  "parse clipboard":
+    name: "Parse Image"
+    action: "parse_clipboard_image"
+    description: "Parses screenshot currently on clipboard"
+
+  "batch snip":
+    name: "Batch Snip"
+    hotkey: "Ctrl+Shift+B"
+    action: "batch_snip"
+    description: "Toggles multi-page batch snip mode"
+
+  "batch labs":
+    name: "Batch Snip"
+    hotkey: "Ctrl+Shift+B"
+    action: "batch_snip"
+    description: "Toggles multi-page batch snip mode"
+
+  "finish batch":
+    name: "Finish Batch"
+    hotkey: "Ctrl+Shift+B"
+    action: "batch_snip"
+    description: "Finalizes multi-page batch and inserts merged labs"
+
+  "crawl labs":
+    name: "Auto-Crawl Meditech"
+    action: "auto_crawl_meditech"
+    description: "Autonomously crawls Meditech tabs and inserts merged labs"
+
+  "crawl meditech":
+    name: "Auto-Crawl Meditech"
+    action: "auto_crawl_meditech"
+    description: "Autonomously crawls Meditech tabs and inserts merged labs"
+
+  # -----------------------------------------------------------------
+  # LLM Template & Text Transformation Commands
+  # -----------------------------------------------------------------
+  "filter labs":
+    name: "Filter Pertinent Labs"
+    hotkey: "Ctrl+Alt+T"
+    action: "llm_filter_labs"
+    description: "Uses AI / clinical rules to select only pertinent or abnormal labs"
+
+  "filter pertinent labs":
+    name: "Filter Pertinent Labs"
+    hotkey: "Ctrl+Alt+T"
+    action: "llm_filter_labs"
+    description: "Uses AI / clinical rules to select only pertinent or abnormal labs"
+
+  "llm template":
+    name: "LLM Template"
+    hotkey: "Ctrl+Alt+T"
+    action: "llm_transform"
+    description: "Opens LLM transformation menu to transform selected text"
+
+  "transform text":
+    name: "LLM Template"
+    hotkey: "Ctrl+Alt+T"
+    action: "llm_transform"
+    description: "Opens LLM transformation menu to transform selected text"
+
+  "transform selection":
+    name: "LLM Template"
+    hotkey: "Ctrl+Alt+T"
+    action: "llm_transform"
+    description: "Opens LLM transformation menu to transform selected text"
+
+  "summarize labs":
+    name: "Summarize Labs"
+    action: "llm_summarize_labs"
+    description: "Transforms labs into a concise oral summary for rounds or dictation"
+
+  "format soap":
+    name: "Format as SOAP Note"
+    action: "llm_soap_format"
+    description: "Transforms text and labs into a structured SOAP assessment"
+
 
 # -------------------------------------------------------------------
 # Clinical & Document Templates (Macros)

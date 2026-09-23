@@ -19,12 +19,14 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
     QPushButton, QGraphicsDropShadowEffect, QApplication,
-    QStyleOption, QStyle, QFrame
+    QStyleOption, QStyle, QFrame, QMenu, QInputDialog
 )
 
 from widget.lexer.rule_engine import MedicalRuleEngine
 from widget.templates.parser import TemplateParser, TemplateField, FieldType
 from widget.ui.field_popup import FieldPopupWidget
+from widget.ocr.service import ClinicalOcrService
+from widget.ocr.llm_transformer import LLMTransformer, TransformWorker
 
 logger = logging.getLogger("widget.dictation_box")
 
@@ -140,6 +142,28 @@ class ClinicalTextEdit(QTextEdit):
             if key not in (Qt.Key.Key_Shift, Qt.Key.Key_Control, Qt.Key.Key_Alt, Qt.Key.Key_Meta):
                 popup.hide()
 
+        # Screen Snip & Clipboard Parse shortcuts
+        if (modifiers & Qt.KeyboardModifier.ControlModifier) and (modifiers & Qt.KeyboardModifier.ShiftModifier):
+            if key == Qt.Key.Key_S:
+                self.parent_box.trigger_screen_snip()
+                event.accept()
+                return
+            elif key == Qt.Key.Key_V:
+                self.parent_box.parse_clipboard_image()
+                event.accept()
+                return
+            elif key == Qt.Key.Key_B:
+                self.parent_box.toggle_batch_mode()
+                event.accept()
+                return
+
+        # LLM Template Transformation: Ctrl+Alt+T or Ctrl+Alt+L
+        if (modifiers & Qt.KeyboardModifier.ControlModifier) and (modifiers & Qt.KeyboardModifier.AltModifier):
+            if key in (Qt.Key.Key_T, Qt.Key.Key_L):
+                self.parent_box.run_llm_transform("pertinent_labs")
+                event.accept()
+                return
+
         super().keyPressEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -185,6 +209,12 @@ class DictationBoxWidget(QWidget):
         self.field_popup.option_selected.connect(self._on_field_option_selected)
 
         self.highlighter = ClinicalFieldHighlighter(self.text_edit)
+
+        self.ocr_service = ClinicalOcrService(self)
+        self.ocr_service.parsing_started.connect(self._on_ocr_started)
+        self.ocr_service.parsing_completed.connect(self._on_ocr_completed)
+        self.ocr_service.parsing_failed.connect(self._on_ocr_failed)
+        self.ocr_service.batch_updated.connect(self._on_batch_updated)
 
     def _init_window_flags(self):
         self.setWindowFlags(
@@ -368,8 +398,80 @@ class DictationBoxWidget(QWidget):
         clear_btn.clicked.connect(self.clear_text)
         footer_layout.addWidget(clear_btn)
 
+        # Snip Labs Button
+        self.snip_btn = QPushButton("📷 Snip Labs", footer)
+        self.snip_btn.setToolTip("Drag crosshair over Meditech / Citrix to parse labs (Ctrl+Shift+S)")
+        self.snip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.snip_btn.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
+        self.snip_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #38bdf8;
+                border: 1px solid #0284c7;
+                border-radius: 7px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #0369a1;
+                color: white;
+            }
+        """)
+        self.snip_btn.clicked.connect(self.trigger_screen_snip)
+        footer_layout.addWidget(self.snip_btn)
+
+        # Batch Multi-Page Snip Button
+        self.batch_btn = QPushButton("📑 Batch Snip", footer)
+        self.batch_btn.setToolTip("Snip multiple Meditech tabs/pages and merge into a single consult report (Ctrl+Shift+B)")
+        self.batch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.batch_btn.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
+        self._reset_batch_btn_style()
+        self.batch_btn.clicked.connect(self.toggle_batch_mode)
+        footer_layout.addWidget(self.batch_btn)
+
+        # Parse Clipboard Image Button
+        self.parse_clipboard_btn = QPushButton("📋 Parse Image", footer)
+        self.parse_clipboard_btn.setToolTip("Parse screenshot currently on clipboard (Ctrl+Shift+V)")
+        self.parse_clipboard_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.parse_clipboard_btn.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
+        self.parse_clipboard_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #94a3b8;
+                border: 1px solid #334155;
+                border-radius: 7px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                color: #f8fafc;
+            }
+        """)
+        self.parse_clipboard_btn.clicked.connect(self.parse_clipboard_image)
+        footer_layout.addWidget(self.parse_clipboard_btn)
+
+        # LLM Template / Transformation Button
+        self.llm_btn = QPushButton("✨ LLM Template", footer)
+        self.llm_btn.setToolTip("Transform text or filter labs using AI rules (Ctrl+Alt+T)")
+        self.llm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.llm_btn.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
+        self.llm_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #c084fc;
+                border: 1px solid #7c3aed;
+                border-radius: 7px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #5b21b6;
+                color: white;
+            }
+        """)
+        self.llm_btn.clicked.connect(self.show_llm_transform_menu)
+        footer_layout.addWidget(self.llm_btn)
+
         # Shortcut hint
-        hint_lbl = QLabel("Toggle Box: [Ctrl+D]  •  Next Field: [Tab / Voice]", footer)
+        hint_lbl = QLabel("Toggle: [Ctrl+D] • Snip: [Ctrl+Shift+S] • Batch: [Ctrl+Shift+B] • LLM: [Ctrl+Alt+T] • Field: [Tab]", footer)
         hint_lbl.setFont(QFont("Segoe UI", 7, QFont.Weight.DemiBold))
         hint_lbl.setStyleSheet("color: #475569;")
         footer_layout.addWidget(hint_lbl)
@@ -784,3 +886,201 @@ class DictationBoxWidget(QWidget):
         words = len(text.split()) if text else 0
         chars = len(text)
         self.stats_lbl.setText(f"{words} words • {chars} chars")
+
+    # -----------------------------------------------------------------
+    # Screen Snip & Clipboard OCR Ingestion
+    # -----------------------------------------------------------------
+    def trigger_screen_snip(self):
+        """Launches interactive full-screen crosshair overlay to snip Meditech/Citrix."""
+        if hasattr(self, "ocr_service") and self.ocr_service:
+            self.ocr_service.trigger_screen_snip()
+
+    def parse_clipboard_image(self):
+        """Parses screenshot currently sitting on system clipboard."""
+        if hasattr(self, "ocr_service") and self.ocr_service:
+            success = self.ocr_service.parse_clipboard_image()
+            if not success:
+                self._show_ocr_status("⚠️ No image on clipboard", is_error=True)
+
+    def toggle_batch_mode(self):
+        """Toggles multi-page batch mode. When active, subsequent snips accumulate until finished."""
+        if hasattr(self, "ocr_service") and self.ocr_service:
+            if self.ocr_service.is_batch_mode:
+                self.ocr_service.finish_batch_mode()
+                self._reset_batch_btn_style()
+            else:
+                self.ocr_service.start_batch_mode()
+                self._set_batch_btn_active(0)
+                self._show_ocr_status("📑 Batch Mode: Snip Page 1...")
+
+    def _on_batch_updated(self, count: int, summary: str):
+        self._set_batch_btn_active(count)
+        self._show_ocr_status(f"📑 Page {count} Added ({summary}) • Snip next or click Finish")
+
+    def _set_batch_btn_active(self, count: int):
+        if hasattr(self, "batch_btn"):
+            self.batch_btn.setText(f"✅ Finish Batch ({count})")
+            self.batch_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #065f46;
+                    color: #6ee7b7;
+                    border: 1px solid #10b981;
+                    border-radius: 7px;
+                    padding: 5px 10px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #047857;
+                    color: white;
+                }
+            """)
+
+    def _reset_batch_btn_style(self):
+        if hasattr(self, "batch_btn"):
+            self.batch_btn.setText("📑 Batch Snip")
+            self.batch_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #1e293b;
+                    color: #a78bfa;
+                    border: 1px solid #8b5cf6;
+                    border-radius: 7px;
+                    padding: 5px 10px;
+                }
+                QPushButton:hover {
+                    background-color: #6d28d9;
+                    color: white;
+                }
+            """)
+
+    def auto_crawl_meditech(self):
+        """Autonomously crawls Meditech tabs on screen and compiles lab report."""
+        if hasattr(self, "ocr_service") and self.ocr_service:
+            self.ocr_service.trigger_auto_crawl()
+
+    # -----------------------------------------------------------------
+    # LLM Template & Text Transformation
+    # -----------------------------------------------------------------
+    def show_llm_transform_menu(self):
+        """Displays menu of clinical LLM transformation presets."""
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #0f172a;
+                color: #f8fafc;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #6d28d9;
+                color: white;
+            }
+        """)
+
+        a1 = menu.addAction("🎯 Filter Pertinent Labs (Select core & abnormal labs)")
+        a2 = menu.addAction("📝 Summarize for Dictation / Rounds")
+        a3 = menu.addAction("📋 Format as SOAP Note")
+        menu.addSeparator()
+        a4 = menu.addAction("✏️ Custom Prompt...")
+
+        btn_pos = self.llm_btn.mapToGlobal(QPoint(0, -140))
+        action = menu.exec(btn_pos)
+        if action == a1:
+            self.run_llm_transform("pertinent_labs")
+        elif action == a2:
+            self.run_llm_transform("summarize_dictation")
+        elif action == a3:
+            self.run_llm_transform("soap_format")
+        elif action == a4:
+            self._prompt_custom_transform()
+
+    def _prompt_custom_transform(self):
+        prompt, ok = QInputDialog.getText(
+            self,
+            "Custom LLM Transformation",
+            "Enter instruction prompt for transforming the text:"
+        )
+        if ok and prompt.strip():
+            self.run_llm_transform(preset="custom", custom_prompt=prompt.strip())
+
+    def run_llm_transform(self, preset: str = "pertinent_labs", custom_prompt: str = ""):
+        """Executes LLM transformation on selected text (or all text if none selected)."""
+        cursor = self.text_edit.textCursor()
+        has_selection = cursor.hasSelection()
+
+        if has_selection:
+            target_text = cursor.selectedText().replace("\u2029", "\n")
+        else:
+            target_text = self.text_edit.toPlainText().strip()
+
+        if not target_text:
+            self._show_ocr_status("⚠️ No text to transform", is_error=True)
+            return
+
+        self._show_ocr_status("⏳ Transforming with LLM...")
+
+        self._transform_worker = TransformWorker(target_text, preset=preset, custom_prompt=custom_prompt, parent=self)
+        self._transform_worker.transformation_completed.connect(
+            lambda result: self._on_transform_completed(result, has_selection)
+        )
+        self._transform_worker.transformation_failed.connect(
+            lambda err: self._show_ocr_status(f"⚠️ {err}", is_error=True)
+        )
+        self._transform_worker.start()
+
+    def _on_transform_completed(self, transformed_text: str, had_selection: bool):
+        if not transformed_text.strip():
+            self._show_ocr_status("⚠️ Empty transformation result", is_error=True)
+            return
+
+        cursor = self.text_edit.textCursor()
+        if had_selection and cursor.hasSelection():
+            cursor.beginEditBlock()
+            cursor.insertText(transformed_text)
+            cursor.endEditBlock()
+        else:
+            self.text_edit.setPlainText(transformed_text)
+
+        self._show_ocr_status("✓ Text Transformed with LLM!")
+
+    def _on_ocr_started(self):
+        self._show_ocr_status("⏳ Parsing Labs...")
+
+    def _on_ocr_completed(self, formatted_text: str):
+        self._reset_batch_btn_style()
+        self.insert_template(formatted_text)
+        self._show_ocr_status("✓ Labs Ingested!")
+
+    def _on_ocr_failed(self, error_msg: str):
+        self._show_ocr_status(f"⚠️ {error_msg}", is_error=True)
+
+    def _show_ocr_status(self, message: str, is_error: bool = False):
+        self.status_badge.setText(message)
+        if is_error:
+            self.status_badge.setStyleSheet("""
+                color: #f87171;
+                background-color: #450a0a;
+                padding: 2px 8px;
+                border-radius: 10px;
+            """)
+        else:
+            self.status_badge.setStyleSheet("""
+                color: #34d399;
+                background-color: #064e3b;
+                padding: 2px 8px;
+                border-radius: 10px;
+            """)
+        QTimer.singleShot(3500, lambda: self._reset_status_badge())
+
+    def _reset_status_badge(self):
+        self.status_badge.setText("● Active Target")
+        self.status_badge.setStyleSheet("""
+            color: #38bdf8;
+            background-color: #0c4a6e;
+            padding: 2px 8px;
+            border-radius: 10px;
+        """)
