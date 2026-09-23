@@ -39,27 +39,38 @@ class ClinicalFieldHighlighter(QSyntaxHighlighter):
 
     def __init__(self, parent_doc):
         super().__init__(parent_doc)
+        # 1. Regular template wildcard format: benign, calm, non-abrasive soft sky/slate pill
         self.wildcard_fmt = QTextCharFormat()
-        self.wildcard_fmt.setForeground(QColor("#fde047"))
-        self.wildcard_fmt.setBackground(QColor("#451a03"))
-        self.wildcard_fmt.setFontWeight(QFont.Weight.Bold)
+        self.wildcard_fmt.setForeground(QColor("#93c5fd"))  # Soft calming blue
+        self.wildcard_fmt.setBackground(QColor("#1e293b"))  # Slate-800 capsule
+        self.wildcard_fmt.setFontWeight(QFont.Weight.DemiBold)
 
+        # 2. Choice with free-text wildcard: gentle, non-abrasive muted warm peach
+        self.wildcard_picklist_fmt = QTextCharFormat()
+        self.wildcard_picklist_fmt.setForeground(QColor("#fed7aa"))  # Soft warm peach
+        self.wildcard_picklist_fmt.setBackground(QColor("#2d1f18"))  # Muted warm slate
+        self.wildcard_picklist_fmt.setFontWeight(QFont.Weight.DemiBold)
+
+        # 3. Default format: gentle sage green
         self.default_fmt = QTextCharFormat()
-        self.default_fmt.setForeground(QColor("#86efac"))
-        self.default_fmt.setBackground(QColor("#064e3b"))
-        self.default_fmt.setFontWeight(QFont.Weight.Bold)
+        self.default_fmt.setForeground(QColor("#86efac"))    # Emerald-300
+        self.default_fmt.setBackground(QColor("#064e3b"))    # Emerald-950
+        self.default_fmt.setFontWeight(QFont.Weight.DemiBold)
 
+        # 4. Interactive picklist format: sleek cyan/sky blue
         self.picklist_fmt = QTextCharFormat()
-        self.picklist_fmt.setForeground(QColor("#38bdf8"))
-        self.picklist_fmt.setBackground(QColor("#0c4a6e"))
-        self.picklist_fmt.setFontWeight(QFont.Weight.Bold)
+        self.picklist_fmt.setForeground(QColor("#38bdf8"))   # Sky-400
+        self.picklist_fmt.setBackground(QColor("#0c4a6e"))   # Sky-950
+        self.picklist_fmt.setFontWeight(QFont.Weight.DemiBold)
 
     def highlightBlock(self, text: str):
         fields = TemplateParser.parse_fields(text)
         for field in fields:
             length = field.end_pos - field.start_pos
-            if field.field_type in (FieldType.WILDCARD, FieldType.WILDCARD_PICKLIST):
+            if field.field_type == FieldType.WILDCARD:
                 self.setFormat(field.start_pos, length, self.wildcard_fmt)
+            elif field.field_type == FieldType.WILDCARD_PICKLIST:
+                self.setFormat(field.start_pos, length, self.wildcard_picklist_fmt)
             elif field.field_type == FieldType.DEFAULT:
                 self.setFormat(field.start_pos, length, self.default_fmt)
             elif field.field_type == FieldType.PICKLIST:
@@ -728,8 +739,8 @@ class DictationBoxWidget(QWidget):
             self.transfer_btn.setText(f"⚠️ Copied ({unfilled_count} unfilled [***])")
             self.transfer_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #d97706;
-                    color: white;
+                    background-color: #9a3412;
+                    color: #ffedd5;
                     border-radius: 7px;
                     padding: 6px 18px;
                     font-weight: bold;
