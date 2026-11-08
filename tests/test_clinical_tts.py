@@ -43,8 +43,8 @@ def test_transcriptionist_proper_noun_disambiguation():
     output = preprocessor.preprocess(input_text)
 
     # 1. Names of individuals MUST be spelled out
-    assert "Dr. Vandermeer, spelled V A N D E R M E E R" in output
-    assert "Dr. Kaczynski, spelled K A C Z Y N S K I" in output
+    assert "Doctor Vandermeer, spelled V A N D E R M E E R" in output
+    assert "Doctor Kaczynski, spelled K A C Z Y N S K I" in output
 
     # 2. Explicit place tag MUST be spelled out
     assert "Tillsonburg, spelled T I L L S O N B U R G" in output
@@ -56,36 +56,39 @@ def test_transcriptionist_proper_noun_disambiguation():
 
 
 def test_medical_dictionary_phonetics_and_acronyms():
-    """Verifies phonetic substitutions and clinical acronym expansions."""
-    # Test tricky drug pronunciations
-    text1 = "Patient prescribed metoprolol, atorvastatin, and ceftriaxone."
-    res1 = apply_medical_dictionary(text1)
-    assert "meh-toe-pro-lol" in res1
-    assert "uh-tor-vuh-stat-in" in res1
-    assert "sef-try-axe-own" in res1
+    """Verifies clean natural pronunciations, un-paused terms, and clinical acronym expansions."""
+    # Test unhyphenated natural pronunciations (no stuttering hyphens)
+    text1 = "Patient prescribed metoprolol, atorvastatin, and ceftriaxone 1g IV."
+    prep = ClinicalTextPreprocessor(explicit_punctuation=False)
+    res1 = prep.preprocess(text1)
+    assert "1 gram" in res1
+    assert "I. V." in res1
+    assert "a torva statin" in res1
+    # Verify no choppy hyphens inserted into metoprolol or ceftriaxone
+    assert "meh-toe-pro-lol" not in res1
+    assert "sef-try-axe-own" not in res1
 
-    # Test Greek/Latin clinical symptoms
-    text2 = "Patient presents with dyspnea, cachexia, and pruritus."
+    # Test tricky microbes
+    text2 = "Patient positive for MRSA and Clostridioides difficile."
     res2 = apply_medical_dictionary(text2)
-    assert "disp-nee-uh" in res2
-    assert "kuh-kex-ee-uh" in res2
-    assert "proo-rye-tus" in res2
+    assert "M. R. S. A." in res2
+    assert "diffeeseel" in res2
 
     # Test clinical acronyms (PO/BID/IV stay as clean spoken letters, NOT over-expanded)
     text3 = "Patient with COPD and CHF on PO medications BID and IV fluids."
     res3 = apply_medical_dictionary(text3)
-    assert "C O P D" in res3
-    assert "C H F" in res3
-    assert "P O" in res3
-    assert "B I D" in res3
-    assert "I V" in res3
+    assert "C. O. P. D." in res3
+    assert "C. H. F." in res3
+    assert "P. O." in res3
+    assert "B. I. D." in res3
+    assert "I. V." in res3
     assert "by mouth" not in res3
     assert "twice daily" not in res3
 
 
 def test_clinical_vitals_and_labs_normalization():
     """Verifies that vitals and lab values are expanded into natural spoken cadence."""
-    preprocessor = ClinicalTextPreprocessor()
+    preprocessor = ClinicalTextPreprocessor(explicit_punctuation=False)
 
     # Vitals
     vitals_text = "BP 138/82, HR 74, SpO2 96%, RR 16, Temp 37.1 C"
@@ -111,13 +114,15 @@ def test_clinical_vitals_and_labs_normalization():
 def test_explicit_punctuation_mode():
     """Verifies explicit spoken punctuation for traditional transcription archives."""
     prep = ClinicalTextPreprocessor(explicit_punctuation=True)
-    text = "Patient alert. Lungs clear, no wheezing.\nPlan: Continue current meds."
+    text = "Patient alert. Lungs clear, no wheezing.\nPlan: Continue ceftriaxone 1g IV daily."
     res = prep.preprocess(text)
 
     assert "period" in res
     assert "comma" in res
     assert "new line" in res
     assert "colon" in res
+    assert "1 gram" in res
+    assert "I. V." in res
 
 
 def test_wav_file_sink(tmp_path):
@@ -148,14 +153,17 @@ def test_kokoro_neural_inference_and_synthesis(tmp_path):
     engine = KokoroClinicalEngine.get_instance()
 
     clinical_sentence = "Patient John Kaczynski evaluated by Dr. Vandermeer. Started on metoprolol 25 mg PO BID."
-    preprocessed = engine.preprocess_text(clinical_sentence)
+    preprocessed = engine.preprocess_text(clinical_sentence, explicit_punctuation=True)
 
-    assert "Dr. Vandermeer, spelled V A N D E R M E E R" in preprocessed
-    assert "meh-toe-pro-lol" in preprocessed
-    assert "P O" in preprocessed
-    assert "B I D" in preprocessed
+    assert "Vandermeer, spelled V A N D E R M E E R" in preprocessed
+    assert "25 milligrams" in preprocessed
+    assert "P. O." in preprocessed
+    assert "B. I. D." in preprocessed
+    assert "period" in preprocessed
     assert "by mouth" not in preprocessed
     assert "twice daily" not in preprocessed
+
+
 
     # Synthesize audio with Kokoro
     audio = engine.synthesize(clinical_sentence, voice="am_adam", speed=1.0)

@@ -1,0 +1,56 @@
+introduction: This is David Kanter Eivin D A V I D K A N T E R  E I V I N PGY1, dictating
+  on behalf of Dr. Shaban S H A B A N, MCTU Staff. Please send copies of this note
+  to the patient's family physician.
+outro: It was a pleasure to be involved in the care of this patient. End of dictation.
+  Thank you.
+hospital_phone_number: '4164716609'
+provider_number: '6740'
+site_number: '01'
+work_type: '001'
+voip_provider: voip.ms
+voip_server: toronto.voip.ms
+voip_username: 573369_dictation
+voip_password: Oea7LNevegRpDP0
+voip_port: 5060
+voip_caller_id: '4164716609'
+call_sequence_summary: 'dial {{hospital_phone_number}} --> wait 3s --> DTMF tones
+  {{provider_number}}# --> {{site_number}}# --> {{work_type}}# --> {{patient_mrn}}#
+  --> DICTATE NOW --> #'
+call_flow_template:
+- action: dial
+  number: '{{hospital_phone_number}}'
+- action: wait
+  seconds: 3.0
+- action: dtmf
+  tones: '{{provider_number}}#'
+- action: wait
+  seconds: 2.0
+- action: dtmf
+  tones: '{{site_number}}#'
+- action: wait
+  seconds: 2.0
+- action: dtmf
+  tones: '{{work_type}}#'
+- action: wait
+  seconds: 2.0
+- action: dtmf
+  tones: '{{patient_mrn}}#'
+- action: wait
+  seconds: 2.0
+- action: dictate_now
+- action: wait
+  seconds: 1.0
+- action: dtmf
+  tones: '#'
+- action: wait
+  seconds: 1.0
+- action: hangup
+submission_channel: bluetooth
+bluetooth_device_name: Pixel 7 Pro DK
+bluetooth_device_mac: D4:3A:2C:A5:93:9D
+encryption_key: pd_sec_key_placeholder_change_in_production
+default_output_option: dial
+listen_in_real_time: true
+tts_voice: am_adam
+tts_speed: 1.18
+output_dir: outputs

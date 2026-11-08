@@ -242,6 +242,69 @@ commands:
 # Use [***] for bracket placeholder fields navigable via "next field"
 # -------------------------------------------------------------------
 templates:
+  "consult note template":
+    name: "Consult Note"
+    description: "Consultation - for Internal Medicine"
+    text: |
+      Date: [***]
+      ID: [***] from [home/nursing home/***] with a background of [***], presenting with [***].
+
+      PAST MEDICAL HISTORY:
+      [***]
+
+      MEDICATIONS:
+      [***]
+
+      SOCIAL HISTORY:
+      [***]
+
+      ALLERGIES: [None]
+
+      HISTORY OF PRESENTING ILLNESS:
+      [***]
+
+      PHYSICAL EXAMINATION:
+      [***]
+
+      INVESTIGATIONS:
+      [***]
+
+      ASSESSMENT AND PLAN:
+      [***]
+
+      [***]. Housekeeping: 
+      - Admit to [MCTU/Hospitalist]
+      - Diet and Activity: [As Tolerated/NPO]
+      - DVT prophylaxis: [enoxaparin 40mg subcut daily/on DOAC/none]
+      - Code Status: Level [5/4/3/2/1/Not Discussed]
+
+  "discharge summary template":
+    name: "Discharge Summary"
+    description: "Full Discharge Dictation Template"
+    text: |
+      DISCHARGE SUMMARY
+      Date of Admission: [***]
+      Date of Discharge: [***]
+
+      MOST RESPONSIBLE DIAGNOSIS:
+      [***]
+
+      OTHER DIAGNOSES:
+      [***]
+
+      OPERATIONS/PROCEDURES: [None]
+      COMPLICATIONS/ADVERSE EVENTS: [None]
+
+      COURSE IN HOSPITAL:
+      [***]
+
+      MEDICATIONS:
+      [***]
+
+      RECOMMENDATIONS AND ISSUES FOR FOLLOW UP:
+      [***]
+
+
   "no pe":
     name: "Normal Physical Exam"
     description: "Standard normal complete physical examination"

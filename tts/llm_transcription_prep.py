@@ -46,13 +46,34 @@ CRITICAL RULES:
      * 'PR' (per rectum) -> 'per rectum'
      * 'SL' (sublingual) -> 'sublingual'
 
-3. DO NOT spell out standard drug names (e.g. Ceftriaxone, Atorvastatin, Metoprolol, Furosemide, Piperacillin-Tazobactam) or standard medical diseases (e.g. Cholecystitis, Choledocholithiasis, Diverticulitis, STEMI). Medical transcriptionists already know standard medical vocabulary.
+3. CONVERT CLINICAL MEASUREMENT UNITS TO SPOKEN WORDS:
+   - Convert dosage units to natural spoken form:
+     * '1g' / '1 g' -> '1 gram', '2g' -> '2 grams'
+     * '1mg' / '1 mg' -> '1 milligram', '50mg' -> '50 milligrams'
+     * '100mcg' -> '100 micrograms'
+     * '4 L/min' -> '4 liters per minute'
+     * '75 mL/hr' -> '75 milliliters per hour'
+     * '104/62 mmHg' -> '104 over 62 millimeters of mercury'
+     * '108 bpm' -> '108 beats per minute'
+     * '26 breaths/min' -> '26 breaths per minute'
+     * '38.6 °C' -> '38.6 degrees Celsius'
+     * 'mg/dL' -> 'milligrams per deciliter'
+     * 'mmol/L' -> 'millimoles per liter'
+   - Speak decimals as 'point' (e.g., '1.4' -> '1 point 4', '8.6' -> '8 point 6').
+   - Speak numeric ranges as 'to' (e.g. '1.4-1.6' -> '1 point 4 to 1 point 6').
+
+4. DICTATE ALL PUNCTUATION AND NEWLINES EXPLICITLY:
+   - Dictate all punctuation marks aloud: 'period', 'comma', 'colon', 'semicolon', 'open parenthesis', 'close parenthesis', 'quote', 'unquote'.
+   - Dictate structural spacing: 'new line' for line breaks, 'new paragraph' for paragraph/section breaks.
+
+5. DO NOT spell out standard drug names (e.g. Ceftriaxone, Atorvastatin, Metoprolol, Furosemide, Piperacillin-Tazobactam) or standard medical diseases (e.g. Cholecystitis, Choledocholithiasis, Diverticulitis, STEMI). Medical transcriptionists already know standard medical vocabulary.
    Only spell out a drug or disease if it is exceptionally obscure, experimental, or ambiguous.
 
-4. PRESERVE ALL CLINICAL FACTS AND NUMBERS with 100% exact accuracy. Never modify, hallucinate, or omit any clinical finding.
+6. PRESERVE ALL CLINICAL FACTS AND NUMBERS with 100% exact accuracy. Never modify, hallucinate, or omit any clinical finding.
 
-5. Output ONLY the processed clinical text, without conversational chatter or introductory remarks.
+7. Output ONLY the processed clinical text, without conversational chatter or introductory remarks.
 """
+
 
 
 class LLMTranscriptionPrep:

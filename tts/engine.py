@@ -6,6 +6,7 @@ Kokoro-82M neural acoustic synthesis, and audio sink routing.
 """
 
 import os
+import re
 import time
 import logging
 from typing import Generator, List, Optional, Tuple, Union
@@ -16,6 +17,7 @@ from kokoro import KPipeline
 from tts.presets import (
     CLINICAL_VOICE_PRESETS,
     DEFAULT_VOICE,
+    DEFAULT_SPEED,
     KOKORO_SAMPLE_RATE,
     VoiceProfile
 )
@@ -42,11 +44,14 @@ class KokoroClinicalEngine:
         self,
         lang_code: str = "a",  # American English
         default_voice: str = DEFAULT_VOICE,
+        default_speed: float = DEFAULT_SPEED,
         device: Optional[str] = None
     ):
         self.lang_code = lang_code
         self.default_voice = default_voice
+        self.default_speed = default_speed
         self.sample_rate = KOKORO_SAMPLE_RATE
+
 
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -83,11 +88,41 @@ class KokoroClinicalEngine:
             logger.info("Kokoro pipeline loaded successfully.")
         return self._pipeline
 
+    def _chunk_script(self, script: str, max_chunk_chars: int = 320) -> List[str]:
+        """
+        Splits a clinical script into natural acoustic segments (sentences, paragraphs)
+        to prevent monotonic runaway speech and ensure natural breathing cadences.
+        """
+        if len(script) <= max_chunk_chars:
+            return [script]
+
+        # Split on structural markers: new paragraph, period, new line, or colon
+        delimiters = [r'(?<=\bnew paragraph\.)\s*', r'(?<=\bperiod\.)\s*', r'(?<=\bnew line,)\s*', r'(?<=\bcolon,)\s*']
+        pattern = '|'.join(delimiters)
+        tokens = [t.strip() for t in re.split(pattern, script) if t.strip()]
+
+        chunks: List[str] = []
+        current_chunk = ""
+
+        for token in tokens:
+            if not current_chunk:
+                current_chunk = token
+            elif len(current_chunk) + len(token) + 1 <= max_chunk_chars:
+                current_chunk += " " + token
+            else:
+                chunks.append(current_chunk)
+                current_chunk = token
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks if chunks else [script]
+
     def preprocess_text(
         self,
         text: str,
         use_llm: bool = False,
-        explicit_punctuation: bool = False
+        explicit_punctuation: bool = True
     ) -> str:
         """
         Normalizes raw clinical narrative, expands labs/vitals, and spells out
@@ -107,19 +142,22 @@ class KokoroClinicalEngine:
         self,
         text: str,
         voice: Optional[str] = None,
-        speed: float = 1.0,
+        speed: Optional[float] = None,
         preprocess: bool = True,
         use_llm: bool = False,
-        explicit_punctuation: bool = False
+        explicit_punctuation: bool = True
     ) -> np.ndarray:
         """
         Synthesizes text into a clean float32 audio waveform (24kHz).
+        Automatically breaks long texts into natural acoustic chunks for optimal cadence.
         Returns a single concatenated 1D numpy array.
         """
         if not text or not text.strip():
             return np.zeros(0, dtype=np.float32)
 
         voice_id = voice or self.default_voice
+        current_speed = speed if speed is not None else self.default_speed
+
         # If passed preset name like 'adam', resolve to 'am_adam'
         if voice_id in CLINICAL_VOICE_PRESETS:
             voice_id = CLINICAL_VOICE_PRESETS[voice_id].id
@@ -133,29 +171,48 @@ class KokoroClinicalEngine:
             )
             logger.info(f"Preprocessed Script for Kokoro:\n{script}")
 
-        chunks: List[np.ndarray] = []
-        generator = self.pipeline(script, voice=voice_id, speed=speed)
-        for result in generator:
-            if result.audio is not None:
-                audio_np = result.audio.cpu().numpy() if isinstance(result.audio, torch.Tensor) else np.array(result.audio)
-                chunks.append(audio_np)
+        # Break text into acoustic chunks for natural pacing
+        script_chunks = self._chunk_script(script)
+        logger.info(f"Synthesizing script in {len(script_chunks)} acoustic chunks at speed {current_speed}x...")
 
-        if not chunks:
+        audio_chunks: List[np.ndarray] = []
+        silence_pause = np.zeros(int(0.12 * self.sample_rate), dtype=np.float32)  # 120ms breathing pause
+
+        for idx, chunk in enumerate(script_chunks):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+
+            generator = self.pipeline(chunk, voice=voice_id, speed=current_speed)
+            chunk_audio_pieces: List[np.ndarray] = []
+            for result in generator:
+                if result.audio is not None:
+                    audio_np = result.audio.cpu().numpy() if isinstance(result.audio, torch.Tensor) else np.array(result.audio)
+                    chunk_audio_pieces.append(audio_np)
+
+            if chunk_audio_pieces:
+                audio_chunks.append(np.concatenate(chunk_audio_pieces))
+                # Add natural inter-chunk breathing pause
+                if idx < len(script_chunks) - 1:
+                    audio_chunks.append(silence_pause)
+
+        if not audio_chunks:
             return np.zeros(0, dtype=np.float32)
 
-        full_audio = np.concatenate(chunks)
+        full_audio = np.concatenate(audio_chunks)
         return full_audio.astype(np.float32)
+
 
     def synthesize_and_play(
         self,
         text: str,
         voice: Optional[str] = None,
-        speed: float = 1.0,
+        speed: Optional[float] = None,
         sink: Optional[BaseAudioSink] = None,
         wait: bool = False,
         preprocess: bool = True,
         use_llm: bool = False,
-        explicit_punctuation: bool = False
+        explicit_punctuation: bool = True
     ) -> np.ndarray:
         """
         Synthesizes clinical text and immediately plays it through the specified
@@ -184,10 +241,10 @@ class KokoroClinicalEngine:
         output_path: Optional[str] = None,
         output_dir: str = "outputs",
         voice: Optional[str] = None,
-        speed: float = 1.0,
+        speed: Optional[float] = None,
         preprocess: bool = True,
         use_llm: bool = False,
-        explicit_punctuation: bool = False
+        explicit_punctuation: bool = True
     ) -> str:
         """
         Synthesizes text and saves the resulting audio to a WAV file.
@@ -203,6 +260,7 @@ class KokoroClinicalEngine:
         )
 
         sink = WavFileSink(output_path=output_path, output_dir=output_dir)
+
         sink.play(audio, sample_rate=self.sample_rate)
         return sink.last_saved_file or ""
 

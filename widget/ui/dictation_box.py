@@ -19,7 +19,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
     QPushButton, QGraphicsDropShadowEffect, QApplication,
-    QStyleOption, QStyle, QFrame, QMenu, QInputDialog
+    QStyleOption, QStyle, QFrame, QMenu, QInputDialog,
+    QComboBox, QFileDialog, QDialog
 )
 
 from widget.lexer.rule_engine import MedicalRuleEngine
@@ -27,6 +28,11 @@ from widget.templates.parser import TemplateParser, TemplateField, FieldType
 from widget.ui.field_popup import FieldPopupWidget
 from widget.ocr.service import ClinicalOcrService
 from widget.ocr.llm_transformer import LLMTransformer, TransformWorker
+from widget.setup_config import DictationSetupConfig
+from widget.ui.patient_info_dialog import PatientInfoDialog
+from widget.ui.dtmf_visualizer import DTMFVisualizerWidget
+from widget.ui.setup_dialog import SetupConfigDialog
+from widget.dictation_export_worker import DictationExportWorker
 
 logger = logging.getLogger("widget.dictation_box")
 
@@ -164,6 +170,13 @@ class ClinicalTextEdit(QTextEdit):
                 event.accept()
                 return
 
+        # Print / PDF Export Preview shortcut: Ctrl+P
+        if (modifiers & Qt.KeyboardModifier.ControlModifier) and not (modifiers & Qt.KeyboardModifier.ShiftModifier) and not (modifiers & Qt.KeyboardModifier.AltModifier):
+            if key == Qt.Key.Key_P:
+                self.parent_box.open_print_preview_dialog()
+                event.accept()
+                return
+
         super().keyPressEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -201,6 +214,8 @@ class DictationBoxWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.rule_engine = MedicalRuleEngine()
+        self.setup_config = DictationSetupConfig.load()
+        self.export_worker: Optional[DictationExportWorker] = None
 
         self._init_window_flags()
         self._init_ui()
@@ -216,6 +231,16 @@ class DictationBoxWidget(QWidget):
         self.ocr_service.parsing_failed.connect(self._on_ocr_failed)
         self.ocr_service.batch_updated.connect(self._on_batch_updated)
 
+        self.dtmf_visualizer: Optional[DTMFVisualizerWidget] = None
+
+    def get_dtmf_visualizer(self) -> DTMFVisualizerWidget:
+        """Lazily creates and returns the DTMFVisualizerWidget."""
+        if self.dtmf_visualizer is None:
+            self.dtmf_visualizer = DTMFVisualizerWidget(self)
+            self.dtmf_visualizer.stop_requested.connect(self._on_stop_export_worker)
+            self.dtmf_visualizer.listen_toggled.connect(self._on_export_listen_toggled)
+        return self.dtmf_visualizer
+
     def _init_window_flags(self):
         self.setWindowFlags(
             Qt.WindowType.Window |
@@ -223,8 +248,8 @@ class DictationBoxWidget(QWidget):
             Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.resize(660, 400)
-        self.setMinimumSize(520, 320)
+        self.resize(760, 430)
+        self.setMinimumSize(560, 320)
 
     def paintEvent(self, event):
         opt = QStyleOption()
@@ -235,6 +260,8 @@ class DictationBoxWidget(QWidget):
     def hideEvent(self, event):
         if hasattr(self, "field_popup") and self.field_popup:
             self.field_popup.hide()
+        if hasattr(self, "dtmf_visualizer") and self.dtmf_visualizer:
+            self.dtmf_visualizer.hide()
         super().hideEvent(event)
 
     def moveEvent(self, event):
@@ -245,6 +272,10 @@ class DictationBoxWidget(QWidget):
     def closeEvent(self, event):
         if hasattr(self, "field_popup") and self.field_popup:
             self.field_popup.close()
+        if hasattr(self, "dtmf_visualizer") and self.dtmf_visualizer:
+            self.dtmf_visualizer.close()
+        if hasattr(self, "export_worker") and self.export_worker and self.export_worker.isRunning():
+            self.export_worker.abort()
         super().closeEvent(event)
 
     def _init_ui(self):
@@ -477,6 +508,94 @@ class DictationBoxWidget(QWidget):
         footer_layout.addWidget(hint_lbl)
 
         footer_layout.addStretch()
+
+        # Output Option Dropdown (MP3 vs Dial vs Print)
+        self.output_combo = QComboBox(footer)
+        self.output_combo.addItem("🎵 MP3", "mp3")
+        self.output_combo.addItem("📞 Dial", "dial")
+        self.output_combo.addItem("🖨️ Print / PDF", "print")
+        self.output_combo.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
+        self.output_combo.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.output_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #1e293b;
+                color: #38bdf8;
+                border: 1px solid #334155;
+                border-radius: 7px;
+                padding: 4px 8px;
+                min-width: 80px;
+            }
+            QComboBox:hover {
+                border-color: #38bdf8;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 14px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #0b1120;
+                color: #f8fafc;
+                selection-background-color: #0284c7;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                padding: 4px;
+            }
+        """)
+        idx = self.output_combo.findData(self.setup_config.default_output_option)
+        if idx >= 0:
+            self.output_combo.setCurrentIndex(idx)
+        self.output_combo.currentIndexChanged.connect(self._on_output_option_changed)
+        footer_layout.addWidget(self.output_combo)
+
+        # Output Submission Button (Dynamic MP3 vs Dial vs Print)
+        self.submit_btn = QPushButton(footer)
+        self.submit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.submit_btn.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self._update_submit_btn_appearance()
+        self.submit_btn.clicked.connect(self.process_output_submission)
+        footer_layout.addWidget(self.submit_btn)
+
+        # Print / PDF Button (🖨️)
+        self.print_btn = QPushButton("🖨️", footer)
+        self.print_btn.setToolTip("Format Note into Professional PDF/DOCX (Ctrl+P)")
+        self.print_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.print_btn.setFont(QFont("Segoe UI", 9))
+        self.print_btn.setFixedSize(28, 28)
+        self.print_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #94a3b8;
+                border: 1px solid #334155;
+                border-radius: 7px;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                color: #38bdf8;
+            }
+        """)
+        self.print_btn.clicked.connect(lambda: self.open_print_preview_dialog())
+        footer_layout.addWidget(self.print_btn)
+
+        # Setup Settings Button (⚙️)
+        self.setup_btn = QPushButton("⚙️", footer)
+        self.setup_btn.setToolTip("Dictation & Telephony Setup (setup.yaml)")
+        self.setup_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setup_btn.setFont(QFont("Segoe UI", 9))
+        self.setup_btn.setFixedSize(28, 28)
+        self.setup_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #94a3b8;
+                border: 1px solid #334155;
+                border-radius: 7px;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                color: #f8fafc;
+            }
+        """)
+        self.setup_btn.clicked.connect(self.open_setup_dialog)
+        footer_layout.addWidget(self.setup_btn)
 
         # Transfer / Paste Button
         self.transfer_btn = QPushButton("📋 Transfer Note", footer)
@@ -1084,3 +1203,199 @@ class DictationBoxWidget(QWidget):
             padding: 2px 8px;
             border-radius: 10px;
         """)
+
+    # =========================================================================
+    # Clinical Dictation Submission: MP3 Export & Telephone Dial-in
+    # =========================================================================
+
+    def _on_output_option_changed(self, index: int):
+        self._update_submit_btn_appearance()
+
+    def _update_submit_btn_appearance(self):
+        mode = self.output_combo.currentData() if hasattr(self, "output_combo") else "mp3"
+        if mode == "dial":
+            self.submit_btn.setText("📞 Dial")
+            self.submit_btn.setToolTip("Initiate telephone dictation with DTMF dialing and oral stream")
+            self.submit_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #059669;
+                    color: white;
+                    border-radius: 7px;
+                    padding: 5px 12px;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background-color: #047857;
+                }
+            """)
+        elif mode == "print":
+            self.submit_btn.setText("🖨️ Print / PDF")
+            self.submit_btn.setToolTip("Format note into institutional templates (TBRHSC Consult, Progress Note) and print or export")
+            self.submit_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #0284c7;
+                    color: white;
+                    border-radius: 7px;
+                    padding: 5px 12px;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background-color: #0369a1;
+                }
+            """)
+        else:
+            self.submit_btn.setText("💾 Export MP3")
+            self.submit_btn.setToolTip("Synthesize oral dictation and export to high-quality MP3 audio file")
+            self.submit_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #0284c7;
+                    color: white;
+                    border-radius: 7px;
+                    padding: 5px 12px;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background-color: #0369a1;
+                }
+            """)
+
+    def open_print_preview_dialog(self, default_template: str = "tbrhsc_consult"):
+        """Opens interactive print formatting and document export preview."""
+        text = self.text_edit.toPlainText().strip()
+        if not text:
+            self._show_ocr_status("⚠️ Dictation canvas is empty", is_error=True)
+            return
+
+        from widget.ui.print_preview_dialog import PrintPreviewDialog
+        dialog = PrintPreviewDialog(raw_note_text=text, parent=self, default_template=default_template)
+        dialog.exec()
+
+    def open_setup_dialog(self):
+        """Opens SetupConfigDialog to inspect and modify setup.yaml."""
+        dialog = SetupConfigDialog(self, config=self.setup_config)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.setup_config = dialog.config
+            idx = self.output_combo.findData(self.setup_config.default_output_option)
+            if idx >= 0:
+                self.output_combo.setCurrentIndex(idx)
+            self._show_ocr_status("✓ Setup settings saved!")
+
+    def process_output_submission(self):
+        """Processes current text based on selected output mode (MP3 vs Dial vs Print)."""
+        text = self.text_edit.toPlainText().strip()
+        if not text:
+            self._show_ocr_status("⚠️ Dictation canvas is empty", is_error=True)
+            return
+
+        mode = self.output_combo.currentData()
+        if mode == "mp3":
+            self._start_mp3_export(text)
+        elif mode == "dial":
+            self._start_dial_flow(text)
+        elif mode == "print":
+            self.open_print_preview_dialog()
+
+    def _start_mp3_export(self, text: str):
+        """Asks for save file location and starts background MP3 synthesis."""
+        import time
+        from pathlib import Path
+        outputs_dir = Path(__file__).resolve().parent.parent.parent / "outputs"
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        default_name = str(outputs_dir / f"dictation_{timestamp}.mp3")
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Dictation Audio as MP3",
+            default_name,
+            "MP3 Audio Files (*.mp3);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        self._show_ocr_status("⏳ Synthesizing MP3...")
+        self.submit_btn.setEnabled(False)
+
+        self.export_worker = DictationExportWorker(
+            mode="mp3",
+            note_text=text,
+            config=self.setup_config,
+            output_file_path=file_path,
+            parent=self
+        )
+        self.export_worker.status_changed.connect(lambda s: self._show_ocr_status(f"⏳ {s}"))
+        self.export_worker.finished.connect(self._on_mp3_export_finished)
+        self.export_worker.error.connect(lambda err: self._on_export_error("MP3 Export Failed", err))
+        self.export_worker.start()
+
+    def _on_mp3_export_finished(self, mode: str, file_path: str):
+        from pathlib import Path
+        self.submit_btn.setEnabled(True)
+        file_name = Path(file_path).name
+        self._show_ocr_status(f"✓ Saved: {file_name}")
+
+    def _start_dial_flow(self, text: str):
+        """Prompts for patient details and initiates telephone DTMF dial-in."""
+        dialog = PatientInfoDialog(self, config=self.setup_config)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        patient_name = dialog.patient_name
+        mrn = dialog.mrn
+        work_type = dialog.work_type
+        listen = dialog.listen_in_real_time
+        channel = dialog.submission_channel
+
+        # Position DTMF visualizer beside dictation box
+        visualizer = self.get_dtmf_visualizer()
+        visualizer.move(self.x() + self.width() + 10, self.y())
+        visualizer.listen_cb.setChecked(listen)
+        channel_label = "Bluetooth Phone" if channel == "bluetooth" else "VoIP.ms"
+        visualizer.start_call(f"Connecting via {channel_label}...", channel=channel_label)
+
+        self.submit_btn.setEnabled(False)
+        self.export_worker = DictationExportWorker(
+            mode="dial",
+            note_text=text,
+            config=self.setup_config,
+            patient_name=patient_name,
+            mrn=mrn,
+            work_type=work_type,
+            submission_channel=channel,
+            listen_in_real_time=listen,
+            parent=self
+        )
+        self.export_worker.dtmf_digit_emitted.connect(visualizer.highlight_dtmf)
+        self.export_worker.status_changed.connect(visualizer.update_status)
+        self.export_worker.transcript_emitted.connect(visualizer.append_transcript)
+        self.export_worker.audio_activity_emitted.connect(visualizer.update_audio_activity)
+        self.export_worker.finished.connect(self._on_dial_finished)
+        self.export_worker.error.connect(self._on_dial_error)
+        self.export_worker.start()
+
+    def _on_dial_finished(self, mode: str, summary: str):
+        self.submit_btn.setEnabled(True)
+        if self.dtmf_visualizer:
+            self.dtmf_visualizer.end_call(summary)
+        self._show_ocr_status("✓ Telephone Dictation Completed!")
+
+    def _on_dial_error(self, err: str):
+        self.submit_btn.setEnabled(True)
+        if self.dtmf_visualizer:
+            self.dtmf_visualizer.end_call(f"Call Error: {err}")
+        self._show_ocr_status(f"⚠️ Dialing failed: {err}", is_error=True)
+
+    def _on_export_error(self, title: str, err: str):
+        self.submit_btn.setEnabled(True)
+        self._show_ocr_status(f"⚠️ {err}", is_error=True)
+
+    def _on_export_listen_toggled(self, checked: bool):
+        if self.export_worker:
+            self.export_worker.set_listen_in_real_time(checked)
+
+    def _on_stop_export_worker(self):
+        if self.export_worker and self.export_worker.isRunning():
+            self.export_worker.abort()
+        self.submit_btn.setEnabled(True)
+        self._show_ocr_status("⏹ Call terminated by clinician")
+
